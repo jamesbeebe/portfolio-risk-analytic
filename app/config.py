@@ -35,3 +35,6 @@ SAMPLE_PORTFOLIOS_RATE_LIMIT = "20/minute"
 ANALYZE_RATE_LIMIT = "10/minute"
 SIMULATE_RATE_LIMIT = "5/minute"
 RATE_LIMIT_RETRY_AFTER_SECONDS = 60
+
+# In-process caching settings for public-demo stability.
+MARKET_DATA_CACHE_SIZE = 32
