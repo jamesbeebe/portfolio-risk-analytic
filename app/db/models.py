@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -37,7 +37,10 @@ class SavedPortfolio(Base):
     end_date: Mapped[str] = mapped_column(String(10), nullable=False)
     confidence_level: Mapped[float] = mapped_column(Float, nullable=False)
     simulations: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+    )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # A SQLAlchemy relationship links Python objects across tables without
@@ -92,7 +95,10 @@ class AnalysisRun(Base):
     var_99: Mapped[float] = mapped_column(Float, nullable=False)
     es_99: Mapped[float] = mapped_column(Float, nullable=False)
     simulation_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    ran_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    ran_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+    )
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     portfolio: Mapped[SavedPortfolio | None] = relationship(
