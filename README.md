@@ -231,3 +231,42 @@ Both must be running at the same time. The UI calls the API on `http://localhost
 | Ticker not found error | One or more ticker symbols are invalid, delisted, or unsupported by Yahoo Finance. | Double-check the symbol spelling and try widely known NYSE/NASDAQ tickers first. |
 | Weights validation error in UI | Weights do not sum to `1.0`, include invalid numbers, or do not match ticker count. | Fix the entries manually or enable auto-normalize in the sidebar. |
 | Charts don't render | Plotly may not be installed in the active virtual environment. | Install Plotly with `pip install plotly`, then restart Streamlit. |
+
+## Public Demo Safeguards
+
+This project includes lightweight hardening measures to make the public demo more stable and professional without adding unnecessary infrastructure. The current safeguards include backend-side validation caps, endpoint rate limiting, lightweight in-memory caching, deployment-aware CORS restrictions, and request logging for diagnostics.
+
+These protections are intentionally simple and appropriate for a student or personal portfolio project. They reduce the chance of accidental or abusive overuse, keep the app responsive during demos, and help surface operational issues clearly without introducing enterprise-only complexity.
+
+## Why These Protections Exist
+
+Monte Carlo simulation and historical market-data retrieval are the most expensive parts of the application. The demo intentionally caps simulation settings and request shapes to keep the user experience responsive, protect free-tier or student-run infrastructure, and prevent abuse of expensive endpoints.
+
+## Current Public-Demo Limits
+
+| Setting | Limit |
+| --- | --- |
+| Max tickers | 10 |
+| Allowed simulations | 1000, 5000, 10000, 50000 |
+| Horizon days | 1 |
+| Minimum history window | 180 days |
+| Maximum history window | 10 years |
+
+## Rate Limit Examples
+
+| Endpoint | Rate Limit |
+| --- | --- |
+| `GET /health` | 60 requests per minute per IP |
+| `GET /` | 30 requests per minute per IP |
+| `GET /sample-portfolios` | 20 requests per minute per IP |
+| `POST /analyze` | 10 requests per minute per IP |
+| `POST /simulate` | 5 requests per minute per IP |
+
+## Future Improvements
+
+Possible future upgrades for a more production-oriented deployment include:
+
+- Redis-backed caching
+- authentication for private or admin use
+- external monitoring and alerting
+- container deployment hardening
