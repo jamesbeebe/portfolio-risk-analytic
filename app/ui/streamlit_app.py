@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from datetime import date
 
+import numpy as np
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 import requests
 
@@ -375,6 +378,122 @@ def render_summary_metrics(result: dict, payload: dict) -> None:
     st.dataframe(weights_df, use_container_width=True, hide_index=True)
 
 
+def render_correlation_matrix(result: dict) -> None:
+    """Render the portfolio correlation matrix as a Plotly heatmap.
+
+    Args:
+        result: Analyze endpoint response payload containing correlation data.
+
+    Returns:
+        None. The function renders Streamlit components directly.
+    """
+
+    correlation = result["correlation"]
+    tickers = correlation["tickers"]
+    matrix = correlation["matrix"]
+    correlation_df = pd.DataFrame(matrix, index=tickers, columns=tickers)
+
+    heatmap = go.Heatmap(
+        z=correlation_df.values,
+        x=tickers,
+        y=tickers,
+        zmin=-1,
+        zmax=1,
+        colorscale="RdYlGn",
+        text=np.round(correlation_df.values, 2),
+        texttemplate="%{text:.2f}",
+        textfont={"color": "black"},
+        hovertemplate="Asset X: %{x}<br>Asset Y: %{y}<br>Correlation: %{z:.2f}<extra></extra>",
+    )
+    figure = go.Figure(data=[heatmap])
+    figure.update_layout(
+        title="Asset Correlation Matrix",
+        width=max(500, len(tickers) * 100),
+        height=max(400, len(tickers) * 80),
+        xaxis_title="",
+        yaxis_title="",
+    )
+    figure.update_yaxes(autorange="reversed")
+
+    st.plotly_chart(figure, use_container_width=True)
+    st.info(
+        "📘 Correlation ranges from -1 (assets move in opposite directions) to +1 "
+        "(assets move together). A well-diversified portfolio ideally has low or "
+        "negative correlations between assets."
+    )
+
+
+def render_simulation_histogram(sim_result: dict, confidence_level: float) -> None:
+    """Render an approximate simulation histogram reconstructed from percentiles.
+
+    Args:
+        sim_result: Simulate endpoint response payload with percentile anchors.
+        confidence_level: Selected confidence level used to place the VaR marker.
+
+    Returns:
+        None. The function renders Streamlit components directly.
+    """
+
+    percentiles = sim_result["percentiles"]
+    percentile_positions = np.array([1, 5, 10, 25, 50, 75, 90, 95, 99], dtype=float)
+    percentile_values = np.array(
+        [
+            percentiles["p1"],
+            percentiles["p5"],
+            percentiles["p10"],
+            percentiles["p25"],
+            percentiles["p50"],
+            percentiles["p75"],
+            percentiles["p90"],
+            percentiles["p95"],
+            percentiles["p99"],
+        ],
+        dtype=float,
+    )
+
+    synthetic_percentile_grid = np.linspace(1, 99, 500)
+    synthetic_returns = np.interp(
+        synthetic_percentile_grid,
+        percentile_positions,
+        percentile_values,
+    )
+    synthetic_df = pd.DataFrame({"Portfolio Return": synthetic_returns})
+
+    figure = px.histogram(
+        synthetic_df,
+        x="Portfolio Return",
+        nbins=30,
+        color_discrete_sequence=["#2c7fb8"],
+        title=(
+            "Simulated Portfolio Return Distribution"
+            "<br><sup>(Approximate distribution — reconstructed from percentiles)</sup>"
+        ),
+        labels={"Portfolio Return": "Portfolio Return", "count": "Frequency"},
+    )
+
+    var_value = percentiles["p5"] if confidence_level == 0.95 else percentiles["p1"]
+    figure.add_vline(
+        x=var_value,
+        line_dash="dash",
+        line_color="red",
+        annotation_text="VaR threshold",
+        annotation_position="top left",
+    )
+    figure.update_layout(
+        xaxis_title="Portfolio Return",
+        yaxis_title="Frequency",
+        bargap=0.05,
+    )
+
+    st.plotly_chart(figure, use_container_width=True)
+    st.info(
+        "📘 This histogram shows the distribution of simulated one-day portfolio "
+        f"returns across {sim_result['simulation_count']:,} Monte Carlo scenarios. "
+        "The red dashed line marks the VaR threshold — returns to the left of this "
+        "line represent the tail losses used to compute Expected Shortfall."
+    )
+
+
 api_is_healthy, health_message = check_api_health()
 if api_is_healthy:
     st.success("✓ Connected to Risk API")
@@ -567,3 +686,11 @@ if (
         result=st.session_state["analyze_result"],
         payload=st.session_state["last_payload"],
     )
+    chart_columns = st.columns(2)
+    with chart_columns[0]:
+        render_correlation_matrix(st.session_state["analyze_result"])
+    with chart_columns[1]:
+        render_simulation_histogram(
+            st.session_state["simulate_result"],
+            float(st.session_state["last_payload"]["confidence_level"]),
+        )
