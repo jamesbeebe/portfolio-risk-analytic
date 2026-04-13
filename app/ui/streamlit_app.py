@@ -26,6 +26,35 @@ SECTION_DIVIDER = "---"
 REQUEST_TIMEOUT_SECONDS = 10
 
 
+def apply_portfolio_to_sidebar(portfolio: dict) -> None:
+    """Load a portfolio-like dictionary into the sidebar widget state.
+
+    Args:
+        portfolio: Dictionary containing ticker, weight, and settings fields.
+
+    Returns:
+        None. The function mutates Streamlit session state directly.
+    """
+
+    st.session_state["sidebar_tickers"] = "\n".join(portfolio.get("tickers", []))
+    st.session_state["sidebar_weights"] = "\n".join(
+        str(weight) for weight in portfolio.get("weights", [])
+    )
+    st.session_state["sidebar_start_date"] = date.fromisoformat(
+        portfolio.get("start_date", DEFAULT_START_DATE)
+    )
+    st.session_state["sidebar_end_date"] = date.fromisoformat(
+        portfolio.get("end_date", DEFAULT_END_DATE)
+    )
+    st.session_state["sidebar_confidence_level"] = float(
+        portfolio.get("confidence_level", DEFAULT_CONFIDENCE)
+    )
+    st.session_state["sidebar_simulations"] = int(
+        portfolio.get("simulations", DEFAULT_SIMULATIONS)
+    )
+    st.session_state["sidebar_random_seed"] = int(portfolio.get("random_seed", 42))
+
+
 def _extract_error_detail(response: requests.Response) -> str:
     """Convert an API error response into a user-friendly message.
 
@@ -108,6 +137,107 @@ def fetch_sample_portfolios() -> tuple[list | None, str | None]:
     if response.status_code == 200:
         body = response.json()
         return body.get("portfolios", []), None
+
+    return None, _extract_error_detail(response)
+
+
+def fetch_saved_portfolios() -> tuple[list | None, str | None]:
+    """Fetch saved portfolios from the persistence API.
+
+    Returns:
+        A tuple of `(portfolios, error_message)` where `portfolios` is a list on
+        success and `error_message` is populated on failure.
+    """
+
+    try:
+        response = requests.get(
+            f"{API_BASE_URL}/portfolios",
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException:
+        return None, "Unable to load saved portfolios because the Risk API is unreachable."
+
+    if response.status_code == 200:
+        body = response.json()
+        return body.get("portfolios", []), None
+
+    return None, _extract_error_detail(response)
+
+
+def save_portfolio_to_api(
+    name: str,
+    portfolio: dict,
+    notes: str | None,
+) -> tuple[dict | None, str | None]:
+    """Persist a named portfolio preset through the backend API.
+
+    Args:
+        name: User-facing name for the saved portfolio.
+        portfolio: JSON-serializable portfolio payload to save.
+        notes: Optional free-text note.
+
+    Returns:
+        A tuple of `(saved_portfolio, error_message)` after the API request.
+    """
+
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/portfolios/save",
+            json={"name": name, "notes": notes, "portfolio": portfolio},
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException:
+        return None, "Unable to save the portfolio because the Risk API is unreachable."
+
+    if response.status_code == 200:
+        return response.json(), None
+
+    return None, _extract_error_detail(response)
+
+
+def delete_portfolio_from_api(portfolio_id: int) -> tuple[bool, str | None]:
+    """Delete a saved portfolio through the backend API.
+
+    Args:
+        portfolio_id: Database ID of the saved portfolio to delete.
+
+    Returns:
+        A tuple of `(deleted, error_message)` indicating the outcome.
+    """
+
+    try:
+        response = requests.delete(
+            f"{API_BASE_URL}/portfolios/{portfolio_id}",
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException:
+        return False, "Unable to delete the portfolio because the Risk API is unreachable."
+
+    if response.status_code == 200:
+        return True, None
+
+    return False, _extract_error_detail(response)
+
+
+def fetch_analysis_history() -> tuple[list | None, str | None]:
+    """Fetch recent persisted analysis history rows from the backend API.
+
+    Returns:
+        A tuple of `(runs, error_message)` where `runs` is a list on success.
+    """
+
+    try:
+        response = requests.get(
+            f"{API_BASE_URL}/history",
+            params={"limit": 20},
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException:
+        return None, "Unable to load analysis history because the Risk API is unreachable."
+
+    if response.status_code == 200:
+        body = response.json()
+        return body.get("runs", []), None
 
     return None, _extract_error_detail(response)
 
@@ -602,6 +732,80 @@ def render_simulation_details(sim_result: dict, confidence_level: float) -> None
     )
 
 
+def render_analysis_history() -> None:
+    """Render recent persisted analysis history and support row-based reloads.
+
+    Returns:
+        None. The function renders Streamlit components directly.
+    """
+
+    history_runs, history_error = fetch_analysis_history()
+
+    if history_error:
+        st.error(history_error)
+        return
+
+    if not history_runs:
+        st.info("No analysis history yet. Run an analysis to get started.")
+        return
+
+    history_rows: list[dict[str, str | float | int | None]] = []
+    for run in history_runs:
+        tickers_display = " · ".join(run["tickers"])
+        if len(tickers_display) > 40:
+            tickers_display = f"{tickers_display[:37]}..."
+
+        history_rows.append(
+            {
+                "Date/Time": pd.to_datetime(run["ran_at"]).strftime("%b %d, %Y %H:%M"),
+                "Tickers": tickers_display,
+                "Volatility": f"{float(run['annualized_volatility']):.1%}",
+                "VaR 95%": f"{float(run['var_95']):.1%}",
+                "ES 95%": f"{float(run['es_95']):.1%}",
+                "Simulations": int(run["simulation_count"]),
+            }
+        )
+
+    history_df = pd.DataFrame(history_rows)
+    selection = st.dataframe(
+        history_df,
+        use_container_width=True,
+        hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row",
+    )
+
+    selected_rows = selection.get("selection", {}).get("rows", [])
+    if selected_rows:
+        selected_run = history_runs[selected_rows[0]]
+        st.session_state["history_selected_run"] = selected_run
+        st.session_state["analyze_result"] = {
+            "tickers": selected_run["tickers"],
+            "weights": selected_run["weights"],
+            "mean_daily_return": selected_run["mean_daily_return"],
+            "annualized_volatility": selected_run["annualized_volatility"],
+            "var_95": selected_run["var_95"],
+            "es_95": selected_run["es_95"],
+            "var_99": selected_run["var_99"],
+            "es_99": selected_run["es_99"],
+        }
+        st.session_state["simulate_result"] = None
+        st.session_state["last_payload"] = {
+            "tickers": selected_run["tickers"],
+            "weights": selected_run["weights"],
+            "start_date": st.session_state["sidebar_start_date"].isoformat(),
+            "end_date": st.session_state["sidebar_end_date"].isoformat(),
+            "confidence_level": float(st.session_state["sidebar_confidence_level"]),
+            "simulations": int(selected_run["simulation_count"]),
+            "horizon_days": 1,
+            "random_seed": int(st.session_state["sidebar_random_seed"]),
+        }
+        st.session_state["active_main_tab"] = 0
+        st.rerun()
+
+    st.caption("Showing last 20 analyses. Analyses are saved automatically.")
+
+
 api_is_healthy, health_message = check_api_health()
 if api_is_healthy:
     st.success("✓ Connected to Risk API")
@@ -629,8 +833,18 @@ st.session_state.setdefault("sidebar_simulations", DEFAULT_SIMULATIONS)
 st.session_state.setdefault("sidebar_random_seed", 42)
 st.session_state.setdefault("sidebar_auto_normalize", False)
 st.session_state.setdefault("selected_sample_portfolio", "— build manually —")
+st.session_state.setdefault("selected_saved_portfolio", "— select —")
 st.session_state.setdefault("show_success_toast", False)
 st.session_state.setdefault("analysis_in_progress", False)
+st.session_state.setdefault("active_main_tab", 0)
+
+saved_portfolios, saved_portfolios_error = fetch_saved_portfolios()
+saved_portfolio_options = ["— select —"]
+saved_portfolio_lookup: dict[str, dict] = {}
+if saved_portfolios:
+    for portfolio in saved_portfolios:
+        saved_portfolio_options.append(portfolio["name"])
+        saved_portfolio_lookup[portfolio["name"]] = portfolio
 
 sample_portfolios, sample_portfolios_error = fetch_sample_portfolios()
 sample_portfolio_options = ["— build manually —"]
@@ -646,6 +860,36 @@ if sample_portfolios:
 with st.sidebar:
     st.header("Portfolio Inputs")
 
+    if saved_portfolios_error:
+        st.warning(saved_portfolios_error)
+    elif saved_portfolios:
+        st.subheader("📂 My Saved Portfolios")
+        saved_selector_column, delete_button_column = st.columns([4, 1])
+        with saved_selector_column:
+            selected_saved = st.selectbox(
+                "Load a saved portfolio",
+                options=saved_portfolio_options,
+                key="selected_saved_portfolio",
+            )
+        selected_saved_portfolio = saved_portfolio_lookup.get(selected_saved)
+        with delete_button_column:
+            delete_saved_clicked = st.button("🗑 Delete", key="delete_saved")
+
+        if selected_saved_portfolio:
+            apply_portfolio_to_sidebar(selected_saved_portfolio)
+            if selected_saved_portfolio.get("notes"):
+                st.caption(selected_saved_portfolio["notes"])
+
+        if delete_saved_clicked and selected_saved_portfolio:
+            deleted, delete_error = delete_portfolio_from_api(selected_saved_portfolio["id"])
+            if deleted:
+                st.session_state["selected_saved_portfolio"] = "— select —"
+                st.rerun()
+            elif delete_error:
+                st.error(delete_error)
+
+        st.markdown(SECTION_DIVIDER)
+
     st.subheader("Load a Sample Portfolio")
     st.caption("Select a preset to auto-fill the form below.")
 
@@ -660,27 +904,7 @@ with st.sidebar:
         selected_portfolio = sample_portfolio_lookup.get(selected_sample)
 
         if selected_portfolio:
-            st.session_state["sidebar_tickers"] = "\n".join(
-                selected_portfolio.get("tickers", [])
-            )
-            st.session_state["sidebar_weights"] = "\n".join(
-                str(weight) for weight in selected_portfolio.get("weights", [])
-            )
-            st.session_state["sidebar_start_date"] = date.fromisoformat(
-                selected_portfolio.get("start_date", DEFAULT_START_DATE)
-            )
-            st.session_state["sidebar_end_date"] = date.fromisoformat(
-                selected_portfolio.get("end_date", DEFAULT_END_DATE)
-            )
-            st.session_state["sidebar_confidence_level"] = float(
-                selected_portfolio.get("confidence_level", DEFAULT_CONFIDENCE)
-            )
-            st.session_state["sidebar_simulations"] = int(
-                selected_portfolio.get("simulations", DEFAULT_SIMULATIONS)
-            )
-            st.session_state["sidebar_random_seed"] = int(
-                selected_portfolio.get("random_seed", 42)
-            )
+            apply_portfolio_to_sidebar(selected_portfolio)
 
     st.markdown(SECTION_DIVIDER)
 
@@ -752,6 +976,32 @@ with st.sidebar:
         use_container_width=True,
         disabled=st.session_state["analysis_in_progress"],
     )
+    if "last_payload" in st.session_state:
+        st.divider()
+        st.subheader("💾 Save This Portfolio")
+        save_portfolio_name = st.text_input(
+            "Portfolio name",
+            key="save_portfolio_name",
+            max_chars=50,
+        )
+        save_portfolio_notes = st.text_area(
+            "Notes (optional)",
+            key="save_portfolio_notes",
+            height=80,
+        )
+        if st.button("Save Portfolio", use_container_width=True):
+            if not save_portfolio_name.strip():
+                st.error("Portfolio name is required.")
+            else:
+                saved_portfolio, save_error = save_portfolio_to_api(
+                    name=save_portfolio_name.strip(),
+                    portfolio=st.session_state["last_payload"],
+                    notes=save_portfolio_notes.strip() or None,
+                )
+                if save_error:
+                    st.error(save_error)
+                elif saved_portfolio is not None:
+                    st.success(f"✓ Portfolio saved as '{saved_portfolio['name']}'")
     st.divider()
     reset_clicked = st.button("🔄 Reset", use_container_width=True)
 
@@ -815,22 +1065,41 @@ if (
     and st.session_state["analyze_result"] is not None
     and "last_payload" in st.session_state
 ):
-    render_summary_metrics(
-        result=st.session_state["analyze_result"],
-        payload=st.session_state["last_payload"],
-    )
-    chart_columns = st.columns(2)
-    with chart_columns[0]:
-        render_correlation_matrix(st.session_state["analyze_result"])
-    with chart_columns[1]:
-        render_simulation_histogram(
-            st.session_state["simulate_result"],
-            float(st.session_state["last_payload"]["confidence_level"]),
+    current_analysis_tab, history_tab = st.tabs(["📊 Current Analysis", "🕐 Analysis History"])
+    with current_analysis_tab:
+        if st.session_state.get("history_selected_run") is not None:
+            st.info(
+                "Loaded a saved analysis from history. Summary metrics are available below. "
+                "Run the portfolio again to regenerate charts and full simulation details."
+            )
+
+        render_summary_metrics(
+            result=st.session_state["analyze_result"],
+            payload=st.session_state["last_payload"],
         )
-    render_simulation_details(
-        st.session_state["simulate_result"],
-        float(st.session_state["last_payload"]["confidence_level"]),
-    )
+        if (
+            st.session_state.get("simulate_result") is not None
+            and "correlation" in st.session_state["analyze_result"]
+        ):
+            chart_columns = st.columns(2)
+            with chart_columns[0]:
+                render_correlation_matrix(st.session_state["analyze_result"])
+            with chart_columns[1]:
+                render_simulation_histogram(
+                    st.session_state["simulate_result"],
+                    float(st.session_state["last_payload"]["confidence_level"]),
+                )
+            render_simulation_details(
+                st.session_state["simulate_result"],
+                float(st.session_state["last_payload"]["confidence_level"]),
+            )
+        else:
+            st.caption(
+                "Detailed charts are only available for the current live analysis run."
+            )
+
+    with history_tab:
+        render_analysis_history()
 
     if st.session_state.get("show_success_toast"):
         # A toast is preferable here because it confirms success without taking up
@@ -838,11 +1107,15 @@ if (
         st.toast("✅ Analysis complete!", icon="📊")
         st.session_state["show_success_toast"] = False
 else:
-    st.info("👈 Enter your portfolio in the sidebar and click Run Analysis to get started.")
-    with st.expander("📖 How this works"):
-        st.markdown(
-            "1. Enter ticker symbols and portfolio weights in the sidebar\n"
-            "2. Choose your date range and analysis settings\n"
-            "3. Click Run Analysis — the app will call the risk engine\n"
-            "4. Results include volatility, Monte Carlo VaR, Expected Shortfall, and a full simulation distribution"
-        )
+    current_analysis_tab, history_tab = st.tabs(["📊 Current Analysis", "🕐 Analysis History"])
+    with current_analysis_tab:
+        st.info("👈 Enter your portfolio in the sidebar and click Run Analysis to get started.")
+        with st.expander("📖 How this works"):
+            st.markdown(
+                "1. Enter ticker symbols and portfolio weights in the sidebar\n"
+                "2. Choose your date range and analysis settings\n"
+                "3. Click Run Analysis — the app will call the risk engine\n"
+                "4. Results include volatility, Monte Carlo VaR, Expected Shortfall, and a full simulation distribution"
+            )
+    with history_tab:
+        render_analysis_history()
