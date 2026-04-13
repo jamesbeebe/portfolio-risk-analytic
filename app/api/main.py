@@ -95,7 +95,7 @@ logger.info("Configured CORS origins: %s", allowed_cors_origins)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next) -> JSONResponse:
-    """Log incoming requests and outgoing responses for basic API observability.
+    """Log incoming requests and outgoing responses for API observability.
 
     Args:
         request: The incoming FastAPI request object.
@@ -107,18 +107,27 @@ async def log_requests(request: Request, call_next) -> JSONResponse:
 
     request_timestamp = datetime.now(timezone.utc).isoformat()
     start_time = perf_counter()
+    client_ip = request.client.host if request.client else "unknown"
+    is_expensive_endpoint = request.url.path in {"/analyze", "/simulate"}
+
+    # Log request metadata only. We intentionally do not log request bodies so
+    # local development logs stay readable and do not expose user-submitted input.
     logger.info(
-        "Incoming request | method=%s path=%s timestamp=%s",
+        "Incoming request | method=%s path=%s client_ip=%s expensive=%s timestamp=%s",
         request.method,
         request.url.path,
+        client_ip,
+        is_expensive_endpoint,
         request_timestamp,
     )
     response = await call_next(request)
     duration_ms = (perf_counter() - start_time) * 1000
     logger.info(
-        "Outgoing response | method=%s path=%s status_code=%s duration_ms=%.2f",
+        "Outgoing response | method=%s path=%s client_ip=%s expensive=%s status_code=%s duration_ms=%.2f",
         request.method,
         request.url.path,
+        client_ip,
+        is_expensive_endpoint,
         response.status_code,
         duration_ms,
     )
