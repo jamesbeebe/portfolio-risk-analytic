@@ -198,6 +198,98 @@ class SimulationResponse(BaseModel):
     best_case: float
 
 
+class SavePortfolioRequest(BaseModel):
+    """Request model for saving a named portfolio preset to the database.
+
+    Attributes:
+        portfolio: Full portfolio definition to persist.
+        name: User-facing portfolio name.
+        notes: Optional free-text note about the saved portfolio.
+    """
+
+    portfolio: AnalyzeRequest
+    name: str = Field(min_length=1, max_length=100)
+    notes: str | None = None
+
+
+class SavedPortfolioResponse(BaseModel):
+    """Response model for one saved portfolio record.
+
+    Attributes:
+        id: Database ID of the saved portfolio.
+        name: User-facing portfolio name.
+        tickers: Ordered list of saved ticker symbols.
+        weights: Ordered list of saved portfolio weights.
+        created_at: ISO-formatted timestamp for when the portfolio was saved.
+        notes: Optional free-text note about the portfolio.
+    """
+
+    id: int
+    name: str
+    tickers: list[str]
+    weights: list[float]
+    created_at: str
+    notes: str | None = None
+
+
+class PortfolioListResponse(BaseModel):
+    """Response model for returning all saved portfolios.
+
+    Attributes:
+        portfolios: Saved portfolio records ordered by newest first.
+        count: Number of saved portfolios returned.
+    """
+
+    portfolios: list[SavedPortfolioResponse]
+    count: int
+
+
+class AnalysisRunResponse(BaseModel):
+    """Response model for one persisted analysis history row.
+
+    Attributes:
+        id: Database ID of the analysis run.
+        tickers: Ordered list of analyzed ticker symbols.
+        weights: Ordered list of analyzed portfolio weights.
+        mean_daily_return: Historical mean daily portfolio return.
+        annualized_volatility: Annualized volatility from the analysis.
+        var_95: 95% Value at Risk.
+        es_95: 95% Expected Shortfall.
+        var_99: 99% Value at Risk.
+        es_99: 99% Expected Shortfall.
+        simulation_count: Number of simulations used for the run.
+        ran_at: ISO-formatted timestamp for when the run was recorded.
+        duration_ms: Optional analysis runtime in milliseconds.
+        portfolio_id: Optional linked saved portfolio ID.
+    """
+
+    id: int
+    tickers: list[str]
+    weights: list[float]
+    mean_daily_return: float
+    annualized_volatility: float
+    var_95: float
+    es_95: float
+    var_99: float
+    es_99: float
+    simulation_count: int
+    ran_at: str
+    duration_ms: int | None
+    portfolio_id: int | None
+
+
+class HistoryResponse(BaseModel):
+    """Response model for returning recent analysis history.
+
+    Attributes:
+        runs: Most recent persisted analysis runs.
+        count: Number of runs returned.
+    """
+
+    runs: list[AnalysisRunResponse]
+    count: int
+
+
 class ErrorResponse(BaseModel):
     """Standard error payload returned by the API when a request fails.
 

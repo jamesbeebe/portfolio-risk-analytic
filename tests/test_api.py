@@ -3,6 +3,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.main import app
+from app.db.database import Base, SessionLocal, engine
+from app.db.models import AnalysisRun, SavedPortfolio
 from app.models.results import RiskResults
 
 client = TestClient(app)
@@ -20,6 +22,34 @@ def disable_rate_limiter_for_api_tests() -> None:
     app.state.limiter.enabled = False
     yield
     app.state.limiter.enabled = previous_enabled
+
+
+@pytest.fixture(autouse=True)
+def reset_database_tables_for_api_tests() -> None:
+    """Create required tables and clear persisted rows for deterministic API tests.
+
+    Returns:
+        None. The fixture prepares a clean local SQLite state around each test.
+    """
+
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.query(AnalysisRun).delete()
+        db.query(SavedPortfolio).delete()
+        db.commit()
+    finally:
+        db.close()
+
+    yield
+
+    db = SessionLocal()
+    try:
+        db.query(AnalysisRun).delete()
+        db.query(SavedPortfolio).delete()
+        db.commit()
+    finally:
+        db.close()
 
 
 def _balanced_portfolio_payload() -> dict:
@@ -240,3 +270,86 @@ def test_simulate_returns_percentiles(monkeypatch: object) -> None:
     assert "p5" in body["percentiles"]
     assert "p95" in body["percentiles"]
     assert body["percentiles"]["p5"] < body["percentiles"]["p95"]
+
+
+def test_save_portfolio_persists_record() -> None:
+    # Verifies the save endpoint persists a named portfolio preset and returns the stored metadata cleanly.
+    response = client.post(
+        "/portfolios/save",
+        json={
+            "name": "Balanced ETF",
+            "notes": "Core allocation",
+            "portfolio": _balanced_portfolio_payload(),
+        },
+    )
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["name"] == "Balanced ETF"
+    assert body["tickers"] == _balanced_portfolio_payload()["tickers"]
+    assert body["weights"] == _balanced_portfolio_payload()["weights"]
+    assert body["notes"] == "Core allocation"
+
+
+def test_get_portfolios_returns_saved_rows() -> None:
+    # Verifies the list endpoint returns saved portfolios in API-friendly form after persistence writes occur.
+    save_response = client.post(
+        "/portfolios/save",
+        json={
+            "name": "Balanced ETF",
+            "portfolio": _balanced_portfolio_payload(),
+        },
+    )
+    assert save_response.status_code == 200
+
+    response = client.get("/portfolios")
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["count"] == 1
+    assert body["portfolios"][0]["name"] == "Balanced ETF"
+
+
+def test_get_portfolio_by_id_returns_404_when_missing() -> None:
+    # Verifies looking up a nonexistent saved portfolio returns a clean 404 error instead of crashing.
+    response = client.get("/portfolios/9999")
+    body = response.json()
+
+    assert response.status_code == 404
+    assert body["detail"] == "Portfolio with id 9999 not found"
+
+
+def test_delete_portfolio_removes_record() -> None:
+    # Verifies the delete endpoint removes saved portfolios and returns the expected success message.
+    save_response = client.post(
+        "/portfolios/save",
+        json={
+            "name": "Balanced ETF",
+            "portfolio": _balanced_portfolio_payload(),
+        },
+    )
+    portfolio_id = save_response.json()["id"]
+
+    delete_response = client.delete(f"/portfolios/{portfolio_id}")
+    list_response = client.get("/portfolios")
+
+    assert delete_response.status_code == 200
+    assert delete_response.json()["message"] == "Portfolio deleted"
+    assert list_response.json()["count"] == 0
+
+
+def test_history_returns_auto_saved_analysis_runs(monkeypatch: object) -> None:
+    # Verifies successful analyze requests are persisted to history so clients can retrieve recent analysis runs later.
+    monkeypatch.setattr("app.api.main.run_risk_pipeline", lambda portfolio: _mock_risk_results())
+
+    first_response = client.post("/analyze", json=_balanced_portfolio_payload())
+    second_response = client.post("/analyze", json=_balanced_portfolio_payload())
+    history_response = client.get("/history")
+    body = history_response.json()
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert history_response.status_code == 200
+    assert body["count"] == 2
+    assert body["runs"][0]["var_95"] == pytest.approx(0.0182)
+    assert body["runs"][0]["tickers"] == _balanced_portfolio_payload()["tickers"]

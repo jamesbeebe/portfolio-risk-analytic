@@ -6,8 +6,7 @@ from pathlib import Path
 from time import perf_counter
 from datetime import datetime, timezone
 
-from fastapi import FastAPI
-from fastapi import Request
+from fastapi import Depends, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -27,12 +26,20 @@ from app.config import (
     SAMPLE_PORTFOLIOS_RATE_LIMIT,
     SIMULATE_RATE_LIMIT,
 )
+from app.db import crud
+from app.db.database import get_db
+from app.db.models import AnalysisRun, SavedPortfolio
 from app.models.api_models import (
+    AnalysisRunResponse,
     AnalyzeRequest,
     AnalyzeResponse,
     CorrelationMatrix,
     ErrorResponse,
+    HistoryResponse,
+    PortfolioListResponse,
     SamplePortfoliosResponse,
+    SavedPortfolioResponse,
+    SavePortfolioRequest,
     SimulationResponse,
 )
 from app.models.portfolio import PortfolioInput
@@ -41,6 +48,7 @@ from app.services.market_data import fetch_price_data
 from app.services.monte_carlo import run_monte_carlo_simulation
 from app.services.pipeline import run_risk_pipeline
 from app.services.portfolio_math import compute_daily_returns
+from sqlalchemy.orm import Session
 
 logging.basicConfig(
     level=logging.INFO,
@@ -91,6 +99,56 @@ except FileNotFoundError:
     SAMPLE_PORTFOLIOS_DATA = None
 
 logger.info("Configured CORS origins: %s", allowed_cors_origins)
+
+
+# FastAPI's Depends() pattern lets the framework inject shared resources into
+# route handlers. In plain English, FastAPI will automatically create a database
+# session for each request and close it when the request is done.
+def serialize_saved_portfolio(portfolio: SavedPortfolio) -> SavedPortfolioResponse:
+    """Convert a SavedPortfolio ORM row into the API response shape.
+
+    Args:
+        portfolio: Saved portfolio ORM object loaded from the database.
+
+    Returns:
+        A SavedPortfolioResponse with JSON fields deserialized into Python lists.
+    """
+
+    return SavedPortfolioResponse(
+        id=portfolio.id,
+        name=portfolio.name,
+        tickers=json.loads(portfolio.tickers),
+        weights=json.loads(portfolio.weights),
+        created_at=portfolio.created_at.isoformat(),
+        notes=portfolio.notes,
+    )
+
+
+def serialize_analysis_run(run: AnalysisRun) -> AnalysisRunResponse:
+    """Convert an AnalysisRun ORM row into the API response shape.
+
+    Args:
+        run: Analysis history ORM object loaded from the database.
+
+    Returns:
+        An AnalysisRunResponse with JSON fields deserialized into Python lists.
+    """
+
+    return AnalysisRunResponse(
+        id=run.id,
+        tickers=json.loads(run.tickers),
+        weights=json.loads(run.weights),
+        mean_daily_return=run.mean_daily_return,
+        annualized_volatility=run.annualized_volatility,
+        var_95=run.var_95,
+        es_95=run.es_95,
+        var_99=run.var_99,
+        es_99=run.es_99,
+        simulation_count=run.simulation_count,
+        ran_at=run.ran_at.isoformat(),
+        duration_ms=run.duration_ms,
+        portfolio_id=run.portfolio_id,
+    )
 
 
 @app.middleware("http")
@@ -299,7 +357,9 @@ def read_sample_portfolios(request: Request) -> SamplePortfoliosResponse | JSONR
 )
 @limiter.limit(ANALYZE_RATE_LIMIT)
 def analyze_portfolio(
-    request: Request, payload: AnalyzeRequest
+    request: Request,
+    payload: AnalyzeRequest,
+    db: Session = Depends(get_db),
 ) -> AnalyzeResponse | JSONResponse:
     """Run the portfolio risk pipeline and return API-shaped analytics results.
 
@@ -312,6 +372,7 @@ def analyze_portfolio(
         error payload when validation or runtime failures occur.
     """
 
+    analysis_start = perf_counter()
     try:
         portfolio_input = PortfolioInput(
             tickers=payload.tickers,
@@ -334,7 +395,7 @@ def analyze_portfolio(
             for row_ticker in correlation_tickers
         ]
 
-        return AnalyzeResponse(
+        response_model = AnalyzeResponse(
             tickers=risk_results.tickers,
             weights=risk_results.weights,
             mean_daily_return=risk_results.mean_daily_return,
@@ -351,6 +412,20 @@ def analyze_portfolio(
             horizon_days=risk_results.horizon_days,
             random_seed=payload.random_seed,
         )
+        duration_ms = int((perf_counter() - analysis_start) * 1000)
+
+        try:
+            # A database write failure should never prevent the user from getting
+            # their analysis result, so persistence is handled separately here.
+            crud.save_analysis_run(
+                db=db,
+                result=response_model,
+                duration_ms=duration_ms,
+            )
+        except Exception:
+            logger.exception("Failed to save analysis history for /analyze request.")
+
+        return response_model
     except ValueError as exc:
         error_response = ErrorResponse(
             error="validation_error",
@@ -367,6 +442,188 @@ def analyze_portfolio(
         error_response = ErrorResponse(
             error="internal_error",
             detail=f"Unexpected server error: {exc}",
+        )
+        return JSONResponse(status_code=500, content=error_response.model_dump())
+
+
+@app.post(
+    "/portfolios/save",
+    response_model=SavedPortfolioResponse,
+    response_model_exclude_none=True,
+    status_code=200,
+    tags=["Persistence"],
+)
+def save_portfolio_route(
+    payload: SavePortfolioRequest,
+    db: Session = Depends(get_db),
+) -> SavedPortfolioResponse | JSONResponse:
+    """Persist a named portfolio preset for later reuse.
+
+    Args:
+        payload: Request body containing the portfolio, display name, and notes.
+        db: Active SQLAlchemy database session supplied by FastAPI.
+
+    Returns:
+        A SavedPortfolioResponse on success, or a JSONResponse on failure.
+    """
+
+    try:
+        saved_portfolio = crud.save_portfolio(
+            db=db,
+            name=payload.name,
+            portfolio=payload.portfolio,
+            notes=payload.notes,
+        )
+        return serialize_saved_portfolio(saved_portfolio)
+    except Exception:
+        logger.exception("Failed to save portfolio.")
+        error_response = ErrorResponse(
+            error="internal_error",
+            detail="Failed to save the portfolio.",
+        )
+        return JSONResponse(status_code=500, content=error_response.model_dump())
+
+
+@app.get(
+    "/portfolios",
+    response_model=PortfolioListResponse,
+    response_model_exclude_none=True,
+    status_code=200,
+    tags=["Persistence"],
+)
+def list_portfolios(
+    db: Session = Depends(get_db),
+) -> PortfolioListResponse | JSONResponse:
+    """Return all saved portfolio presets.
+
+    Args:
+        db: Active SQLAlchemy database session supplied by FastAPI.
+
+    Returns:
+        A PortfolioListResponse on success, or a JSONResponse on failure.
+    """
+
+    try:
+        portfolios = crud.get_all_portfolios(db)
+        serialized = [serialize_saved_portfolio(portfolio) for portfolio in portfolios]
+        return PortfolioListResponse(portfolios=serialized, count=len(serialized))
+    except Exception:
+        logger.exception("Failed to list portfolios.")
+        error_response = ErrorResponse(
+            error="internal_error",
+            detail="Failed to load saved portfolios.",
+        )
+        return JSONResponse(status_code=500, content=error_response.model_dump())
+
+
+@app.get(
+    "/portfolios/{portfolio_id}",
+    response_model=SavedPortfolioResponse,
+    response_model_exclude_none=True,
+    status_code=200,
+    tags=["Persistence"],
+)
+def get_portfolio(
+    portfolio_id: int,
+    db: Session = Depends(get_db),
+) -> SavedPortfolioResponse | JSONResponse:
+    """Return one saved portfolio by database ID.
+
+    Args:
+        portfolio_id: Database ID of the requested portfolio.
+        db: Active SQLAlchemy database session supplied by FastAPI.
+
+    Returns:
+        A SavedPortfolioResponse when found, or a JSONResponse error otherwise.
+    """
+
+    try:
+        portfolio = crud.get_portfolio_by_id(db, portfolio_id)
+        if portfolio is None:
+            error_response = ErrorResponse(
+                error="not_found",
+                detail=f"Portfolio with id {portfolio_id} not found",
+            )
+            return JSONResponse(status_code=404, content=error_response.model_dump())
+        return serialize_saved_portfolio(portfolio)
+    except Exception:
+        logger.exception("Failed to load portfolio id=%s.", portfolio_id)
+        error_response = ErrorResponse(
+            error="internal_error",
+            detail="Failed to load the requested portfolio.",
+        )
+        return JSONResponse(status_code=500, content=error_response.model_dump())
+
+
+@app.delete(
+    "/portfolios/{portfolio_id}",
+    response_model=None,
+    response_model_exclude_none=True,
+    status_code=200,
+    tags=["Persistence"],
+)
+def delete_portfolio(
+    portfolio_id: int,
+    db: Session = Depends(get_db),
+) -> dict[str, str] | JSONResponse:
+    """Delete one saved portfolio by database ID.
+
+    Args:
+        portfolio_id: Database ID of the portfolio to delete.
+        db: Active SQLAlchemy database session supplied by FastAPI.
+
+    Returns:
+        A success message when deleted, or a JSONResponse error otherwise.
+    """
+
+    try:
+        deleted = crud.delete_portfolio(db, portfolio_id)
+        if not deleted:
+            error_response = ErrorResponse(
+                error="not_found",
+                detail=f"Portfolio with id {portfolio_id} not found",
+            )
+            return JSONResponse(status_code=404, content=error_response.model_dump())
+        return {"message": "Portfolio deleted"}
+    except Exception:
+        logger.exception("Failed to delete portfolio id=%s.", portfolio_id)
+        error_response = ErrorResponse(
+            error="internal_error",
+            detail="Failed to delete the requested portfolio.",
+        )
+        return JSONResponse(status_code=500, content=error_response.model_dump())
+
+
+@app.get(
+    "/history",
+    response_model=HistoryResponse,
+    response_model_exclude_none=True,
+    status_code=200,
+    tags=["Persistence"],
+)
+def get_history(
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> HistoryResponse | JSONResponse:
+    """Return recent analysis history rows from the database.
+
+    Args:
+        limit: Maximum number of history rows to return.
+        db: Active SQLAlchemy database session supplied by FastAPI.
+
+    Returns:
+        A HistoryResponse on success, or a JSONResponse on failure.
+    """
+
+    try:
+        runs = crud.get_analysis_history(db=db, limit=limit)
+        serialized = [serialize_analysis_run(run) for run in runs]
+        return HistoryResponse(runs=serialized, count=len(serialized))
+    except Exception:
+        logger.exception("Failed to load analysis history.")
+        error_response = ErrorResponse(
+            error="internal_error",
+            detail="Failed to load analysis history.",
         )
         return JSONResponse(status_code=500, content=error_response.model_dump())
 
