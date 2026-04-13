@@ -209,6 +209,98 @@ def parse_weights(raw: str) -> tuple[list[float] | None, str | None]:
     return parsed_weights, None
 
 
+def validate_and_build_payload(
+    tickers: list[str],
+    weights: list[float] | None,
+    weight_parse_error: str | None,
+    start_date: str,
+    end_date: str,
+    confidence_level: float,
+    simulations: int,
+    horizon_days: int,
+    random_seed: int,
+    auto_normalize: bool,
+) -> tuple[dict | None, list[str]]:
+    """Validate parsed form inputs and build an API payload when valid.
+
+    Args:
+        tickers: Cleaned ticker symbols entered by the user.
+        weights: Parsed portfolio weights, or None if parsing failed.
+        weight_parse_error: Parsing error message from the weights text area.
+        start_date: Analysis start date in ISO format.
+        end_date: Analysis end date in ISO format.
+        confidence_level: Requested confidence level for risk metrics.
+        simulations: Number of Monte Carlo simulation paths.
+        horizon_days: Requested simulation horizon in trading days.
+        random_seed: Seed used to make simulation output reproducible.
+        auto_normalize: Whether the UI should auto-scale weights to sum to 1.0.
+
+    Returns:
+        A tuple of `(payload, errors)` where `payload` is a JSON-ready dict on
+        success and `errors` contains every validation problem found.
+    """
+
+    errors: list[str] = []
+
+    if weight_parse_error is not None:
+        errors.append(weight_parse_error)
+
+    if len(tickers) == 0:
+        errors.append("Please enter at least one ticker symbol")
+
+    if weights is not None and len(tickers) != len(weights):
+        errors.append(
+            f"Number of tickers ({len(tickers)}) does not match number of weights ({len(weights)})"
+        )
+
+    duplicate_tickers = sorted({ticker for ticker in tickers if tickers.count(ticker) > 1})
+    if duplicate_tickers:
+        errors.append(f"Duplicate tickers found: {', '.join(duplicate_tickers)}")
+
+    start_date_obj = date.fromisoformat(start_date)
+    end_date_obj = date.fromisoformat(end_date)
+
+    if start_date_obj >= end_date_obj:
+        errors.append("Start date must be before end date")
+
+    if (end_date_obj - start_date_obj).days < 180:
+        errors.append("Date range must be at least 6 months for reliable analysis")
+
+    if weights is not None and any(weight <= 0 for weight in weights):
+        errors.append("All weights must be positive numbers")
+
+    if weights is not None and auto_normalize:
+        total_weight = float(sum(weights))
+        if total_weight <= 0:
+            errors.append("Weights must sum to a positive value before normalization")
+        else:
+            normalized_weights = [weight / total_weight for weight in weights]
+            st.info(f"Weights normalized from {total_weight:.3f} to 1.000")
+            weights = normalized_weights
+
+    if weights is not None and not auto_normalize:
+        total_weight = float(sum(weights))
+        if abs(total_weight - 1.0) > 0.001:
+            errors.append(
+                f"Weights sum to {total_weight:.4f} — must equal 1.0. Enable auto-normalize or adjust your weights."
+            )
+
+    if errors:
+        return None, errors
+
+    payload = {
+        "tickers": tickers,
+        "weights": weights,
+        "start_date": start_date,
+        "end_date": end_date,
+        "confidence_level": confidence_level,
+        "simulations": simulations,
+        "horizon_days": horizon_days,
+        "random_seed": random_seed,
+    }
+    return payload, []
+
+
 api_is_healthy, health_message = check_api_health()
 if api_is_healthy:
     st.success("✓ Connected to Risk API")
@@ -351,3 +443,42 @@ with st.sidebar:
         type="primary",
         use_container_width=True,
     )
+
+
+if run_clicked:
+    parsed_tickers = parse_tickers(st.session_state["sidebar_tickers"])
+    parsed_weights, weight_error = parse_weights(st.session_state["sidebar_weights"])
+
+    payload, validation_errors = validate_and_build_payload(
+        tickers=parsed_tickers,
+        weights=parsed_weights,
+        weight_parse_error=weight_error,
+        start_date=st.session_state["sidebar_start_date"].isoformat(),
+        end_date=st.session_state["sidebar_end_date"].isoformat(),
+        confidence_level=float(st.session_state["sidebar_confidence_level"]),
+        simulations=int(st.session_state["sidebar_simulations"]),
+        horizon_days=1,
+        random_seed=int(st.session_state["sidebar_random_seed"]),
+        auto_normalize=auto_normalize,
+    )
+
+    if validation_errors:
+        for error_message in validation_errors:
+            st.error(error_message)
+        st.stop()
+
+    with st.spinner("Running analysis... this may take a few seconds"):
+        analyze_result, analyze_error = call_analyze(payload)
+        simulate_result, simulate_error = call_simulate(payload)
+
+    if analyze_error:
+        st.error(analyze_error)
+        st.stop()
+
+    if simulate_error:
+        st.error(simulate_error)
+        st.stop()
+
+    st.session_state["analyze_result"] = analyze_result
+    st.session_state["simulate_result"] = simulate_result
+    st.session_state["last_payload"] = payload
