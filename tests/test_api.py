@@ -96,6 +96,19 @@ def test_root_returns_200() -> None:
     assert response.status_code == 200
 
 
+def test_health_allows_local_streamlit_origin() -> None:
+    # Verifies local Streamlit development origins receive the expected CORS header for browser-based API calls.
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": "http://localhost:8501",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:8501"
+
+
 def test_sample_portfolios_returns_list() -> None:
     # Verifies the sample portfolio endpoint returns bundled example portfolios for demos and client bootstrapping.
     response = client.get("/sample-portfolios")

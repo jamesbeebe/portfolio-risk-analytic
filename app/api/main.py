@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from fastapi import Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import numpy as np
@@ -20,6 +21,7 @@ import uvicorn
 from app.config import (
     ANALYZE_RATE_LIMIT,
     HEALTH_RATE_LIMIT,
+    get_allowed_cors_origins,
     RATE_LIMIT_RETRY_AFTER_SECONDS,
     ROOT_RATE_LIMIT,
     SAMPLE_PORTFOLIOS_RATE_LIMIT,
@@ -70,12 +72,25 @@ app = FastAPI(
     version="0.1.0",
 )
 app.state.limiter = limiter
+allowed_cors_origins = get_allowed_cors_origins()
+
+# Explicit CORS origins are safer than a wildcard for a public demo because they
+# restrict browser-based API access to known frontend apps while preserving local dev.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 SAMPLE_PORTFOLIOS_PATH = Path("data/sample_portfolios.json")
 try:
     SAMPLE_PORTFOLIOS_DATA = json.loads(SAMPLE_PORTFOLIOS_PATH.read_text())
 except FileNotFoundError:
     SAMPLE_PORTFOLIOS_DATA = None
+
+logger.info("Configured CORS origins: %s", allowed_cors_origins)
 
 
 @app.middleware("http")
