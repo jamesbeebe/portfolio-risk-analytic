@@ -150,6 +150,57 @@ def test_analyze_confidence_level_out_of_range() -> None:
     assert response.status_code == 422
 
 
+def test_analyze_rejects_more_than_ten_tickers() -> None:
+    # Verifies the backend caps ticker count to protect expensive public-demo requests from oversized portfolios.
+    payload = _balanced_portfolio_payload()
+    payload["tickers"] = [f"TICKER{i}" for i in range(11)]
+    payload["weights"] = [1 / 11] * 11
+    response = client.post("/analyze", json=payload)
+    assert response.status_code == 422
+
+
+def test_analyze_rejects_disallowed_simulation_count() -> None:
+    # Verifies only approved simulation sizes are accepted so the backend can control compute cost predictably.
+    payload = _balanced_portfolio_payload()
+    payload["simulations"] = 20000
+    response = client.post("/analyze", json=payload)
+    assert response.status_code == 422
+
+
+def test_analyze_rejects_too_short_date_range() -> None:
+    # Verifies very short date windows are blocked because the backend requires enough history for stable analysis.
+    payload = _balanced_portfolio_payload()
+    payload["start_date"] = "2025-01-01"
+    payload["end_date"] = "2025-03-01"
+    response = client.post("/analyze", json=payload)
+    assert response.status_code == 422
+
+
+def test_analyze_rejects_too_long_date_range() -> None:
+    # Verifies very long date windows are blocked to keep the public demo within bounded historical data limits.
+    payload = _balanced_portfolio_payload()
+    payload["start_date"] = "2010-01-01"
+    payload["end_date"] = "2026-01-01"
+    response = client.post("/analyze", json=payload)
+    assert response.status_code == 422
+
+
+def test_analyze_rejects_non_demo_horizon() -> None:
+    # Verifies the public demo enforces a fixed one-day horizon to limit complexity and backend compute scope.
+    payload = _balanced_portfolio_payload()
+    payload["horizon_days"] = 5
+    response = client.post("/analyze", json=payload)
+    assert response.status_code == 422
+
+
+def test_analyze_rejects_duplicate_tickers() -> None:
+    # Verifies duplicate ticker symbols are blocked because repeated assets would distort portfolio composition and compute.
+    payload = _balanced_portfolio_payload()
+    payload["tickers"] = ["AAPL", "AAPL", "SPY", "GLD"]
+    response = client.post("/analyze", json=payload)
+    assert response.status_code == 422
+
+
 def test_simulate_returns_percentiles(monkeypatch: object) -> None:
     # Verifies the simulate endpoint returns percentile statistics and preserves distribution ordering from lower to upper tails.
     monkeypatch.setattr("app.api.main.fetch_price_data", lambda **kwargs: _sample_prices()[kwargs["tickers"]])

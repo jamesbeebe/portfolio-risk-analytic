@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+from datetime import date
+
 from pydantic import BaseModel, Field, model_validator
 
 from app.config import DEFAULTS
+
+MAX_TICKERS = 10
+ALLOWED_SIMULATION_COUNTS = {1000, 5000, 10000, 50000}
+MIN_DATE_RANGE_DAYS = 180
+MAX_DATE_RANGE_DAYS = 3650
+PUBLIC_DEMO_HORIZON_DAYS = 1
 
 
 class AnalyzeRequest(BaseModel):
@@ -44,9 +52,26 @@ class AnalyzeRequest(BaseModel):
                 positive, or if the weights do not sum to 1.0 within tolerance.
         """
 
+        if len(self.tickers) == 0:
+            raise ValueError("Please provide at least one ticker symbol.")
+
+        if len(self.tickers) > MAX_TICKERS:
+            raise ValueError(
+                f"A maximum of {MAX_TICKERS} tickers is allowed per request."
+            )
+
         if len(self.tickers) != len(self.weights):
             raise ValueError(
                 "The number of tickers must match the number of weights."
+            )
+
+        duplicate_tickers = sorted(
+            {ticker for ticker in self.tickers if self.tickers.count(ticker) > 1}
+        )
+        if duplicate_tickers:
+            raise ValueError(
+                "Duplicate ticker symbols are not allowed: "
+                + ", ".join(duplicate_tickers)
             )
 
         if not all((weight > 0.0 for weight in self.weights)):
@@ -57,6 +82,37 @@ class AnalyzeRequest(BaseModel):
         if abs(total_weight - 1.0) > tolerance:
             raise ValueError(
                 "Portfolio weights must sum to 1.0 within a tolerance of 0.001."
+            )
+
+        if self.simulations not in ALLOWED_SIMULATION_COUNTS:
+            allowed_values = ", ".join(
+                str(value) for value in sorted(ALLOWED_SIMULATION_COUNTS)
+            )
+            raise ValueError(
+                "Monte Carlo simulations must be one of: "
+                f"{allowed_values}."
+            )
+
+        if self.horizon_days != PUBLIC_DEMO_HORIZON_DAYS:
+            raise ValueError(
+                f"For this public demo, horizon_days must be {PUBLIC_DEMO_HORIZON_DAYS}."
+            )
+
+        start_date_obj = date.fromisoformat(self.start_date)
+        end_date_obj = date.fromisoformat(self.end_date)
+        date_span_days = (end_date_obj - start_date_obj).days
+
+        if start_date_obj >= end_date_obj:
+            raise ValueError("Start date must be before end date.")
+
+        if date_span_days < MIN_DATE_RANGE_DAYS:
+            raise ValueError(
+                "Date range must be at least 180 days for reliable analysis."
+            )
+
+        if date_span_days > MAX_DATE_RANGE_DAYS:
+            raise ValueError(
+                "Date range cannot exceed 10 years for this public demo."
             )
 
         return self
