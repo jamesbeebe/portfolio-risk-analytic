@@ -54,7 +54,9 @@ def _extract_error_detail(response: requests.Response) -> str:
         return str(detail)
 
     if "error" in body and "detail" in body:
-        return f"{body['error']}: {body['detail']}"
+        if body["error"] == "rate_limit_exceeded":
+            return "Too many requests — please wait a moment before trying again."
+        return str(body["detail"])
 
     return "The API returned an unknown error."
 
@@ -136,6 +138,9 @@ def call_analyze(payload: dict) -> tuple[dict | None, str | None]:
     if response.status_code == 200:
         return response.json(), None
 
+    if response.status_code == 429:
+        return None, "Too many requests — please wait a moment before trying again."
+
     if response.status_code == 422:
         return None, _extract_error_detail(response)
 
@@ -170,6 +175,9 @@ def call_simulate(payload: dict) -> tuple[dict | None, str | None]:
 
     if response.status_code == 200:
         return response.json(), None
+
+    if response.status_code == 429:
+        return None, "Too many requests — please wait a moment before trying again."
 
     if response.status_code == 422:
         return None, _extract_error_detail(response)
@@ -393,11 +401,11 @@ def render_api_error(error_message: str, endpoint: str) -> None:
     st.error(error_message)
     with st.expander("🔧 Troubleshooting"):
         st.markdown(
-            f"• Make sure the FastAPI backend is running:\n"
-            f"  `uvicorn app.api.main:app --reload`\n"
-            f"• Check that your tickers are valid NYSE/NASDAQ symbols\n"
-            f"• If the date range is very recent, yfinance data may have a short delay\n"
-            f"• Endpoint that failed: {endpoint}"
+            "1. Make sure the FastAPI backend is running: "
+            "`uvicorn app.api.main:app --reload`\n"
+            "2. Check that your tickers are valid NYSE/NASDAQ symbols\n"
+            "3. If the date range is very recent, yfinance data may have a short delay\n"
+            f"4. Endpoint that failed: {endpoint}"
         )
 
     if st.button("↩ Go back and edit inputs"):
@@ -608,6 +616,9 @@ st.caption(
     "Monte Carlo Value at Risk · Expected Shortfall · Correlation Analysis"
 )
 st.divider()
+st.caption(
+    "To keep the public demo stable, analysis settings are intentionally capped."
+)
 
 st.session_state.setdefault("sidebar_tickers", "")
 st.session_state.setdefault("sidebar_weights", "")
@@ -619,6 +630,7 @@ st.session_state.setdefault("sidebar_random_seed", 42)
 st.session_state.setdefault("sidebar_auto_normalize", False)
 st.session_state.setdefault("selected_sample_portfolio", "— build manually —")
 st.session_state.setdefault("show_success_toast", False)
+st.session_state.setdefault("analysis_in_progress", False)
 
 sample_portfolios, sample_portfolios_error = fetch_sample_portfolios()
 sample_portfolio_options = ["— build manually —"]
@@ -711,7 +723,9 @@ with st.sidebar:
         "Monte Carlo Simulations",
         options=[1000, 5000, 10000, 50000],
         key="sidebar_simulations",
+        help="Allowed demo tiers: 1000, 5000, 10000, or 50000 simulations.",
     )
+    st.caption("Demo safeguard: only approved simulation tiers are allowed.")
     st.number_input(
         "Random Seed",
         min_value=0,
@@ -736,6 +750,7 @@ with st.sidebar:
         "▶ Run Analysis",
         type="primary",
         use_container_width=True,
+        disabled=st.session_state["analysis_in_progress"],
     )
     st.divider()
     reset_clicked = st.button("🔄 Reset", use_container_width=True)
@@ -751,6 +766,7 @@ with st.sidebar:
 
 
 if run_clicked:
+    st.session_state["analysis_in_progress"] = True
     parsed_tickers = parse_tickers(st.session_state["sidebar_tickers"])
     parsed_weights, weight_error = parse_weights(st.session_state["sidebar_weights"])
 
@@ -768,6 +784,7 @@ if run_clicked:
     )
 
     if validation_errors:
+        st.session_state["analysis_in_progress"] = False
         for error_message in validation_errors:
             st.error(error_message)
         st.stop()
@@ -777,10 +794,12 @@ if run_clicked:
         simulate_result, simulate_error = call_simulate(payload)
 
     if analyze_error:
+        st.session_state["analysis_in_progress"] = False
         render_api_error(analyze_error, "/analyze")
         st.stop()
 
     if simulate_error:
+        st.session_state["analysis_in_progress"] = False
         render_api_error(simulate_error, "/simulate")
         st.stop()
 
@@ -788,6 +807,7 @@ if run_clicked:
     st.session_state["simulate_result"] = simulate_result
     st.session_state["last_payload"] = payload
     st.session_state["show_success_toast"] = True
+    st.session_state["analysis_in_progress"] = False
 
 
 if (
