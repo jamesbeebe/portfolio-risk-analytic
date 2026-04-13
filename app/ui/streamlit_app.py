@@ -499,6 +499,74 @@ def render_simulation_histogram(sim_result: dict, confidence_level: float) -> No
     )
 
 
+def render_simulation_details(sim_result: dict, confidence_level: float) -> None:
+    """Render detailed percentile and summary statistics for the simulation run.
+
+    Args:
+        sim_result: Simulate endpoint response payload with percentile statistics.
+        confidence_level: Selected confidence level used to determine the VaR row.
+
+    Returns:
+        None. The function renders Streamlit components directly.
+    """
+
+    st.subheader("🎲 Simulation Details")
+    st.write(
+        f"Based on {sim_result['simulation_count']:,} Monte Carlo scenarios · "
+        f"{sim_result['horizon_days']}-day horizon"
+    )
+
+    percentile_rows = [
+        ("p1", sim_result["percentiles"]["p1"], "Worst 1% of scenarios"),
+        ("p5", sim_result["percentiles"]["p5"], "Worst 5% of scenarios (VaR 95%)"),
+        ("p10", sim_result["percentiles"]["p10"], "Worst 10% of scenarios"),
+        ("p25", sim_result["percentiles"]["p25"], "Bottom quartile"),
+        ("p50", sim_result["percentiles"]["p50"], "Median scenario"),
+        ("p75", sim_result["percentiles"]["p75"], "Top quartile"),
+        ("p90", sim_result["percentiles"]["p90"], "Best 10% of scenarios"),
+        ("p95", sim_result["percentiles"]["p95"], "Best 5% of scenarios"),
+        ("p99", sim_result["percentiles"]["p99"], "Best 1% of scenarios"),
+    ]
+    percentile_df = pd.DataFrame(
+        percentile_rows,
+        columns=["Percentile", "Return", "Interpretation"],
+    )
+    percentile_df["Return"] = percentile_df["Return"].map(lambda value: f"{float(value):+.2%}")
+
+    highlighted_percentile = "p5" if confidence_level == 0.95 else "p1"
+
+    def highlight_var_row(row: pd.Series) -> list[str]:
+        """Apply a highlight style to the row matching the active VaR percentile.
+
+        Args:
+            row: A row from the percentile DataFrame.
+
+        Returns:
+            A list of CSS styles for each cell in the row.
+        """
+
+        if row["Percentile"] == highlighted_percentile:
+            return ["background-color: #ffe5e5"] * len(row)
+        return [""] * len(row)
+
+    styled_percentile_df = percentile_df.style.apply(highlight_var_row, axis=1)
+    st.dataframe(styled_percentile_df, use_container_width=True, hide_index=True)
+
+    summary_columns = st.columns(4)
+    summary_columns[0].metric("Best Case", f"{float(sim_result['best_case']):+.2%}")
+    summary_columns[1].metric("Worst Case", f"{float(sim_result['worst_case']):+.2%}")
+    summary_columns[2].metric("Mean Return", f"{float(sim_result['mean_return']):+.2%}")
+    summary_columns[3].metric("Std Dev", f"{float(sim_result['std_dev']):.2%}")
+
+    confidence_pct = confidence_level * 100
+    st.info(
+        "📘 Reading the percentile table: each row shows the simulated return at "
+        "that point in the distribution. For example, the p5 row means that in 5% "
+        "of simulated scenarios, the portfolio lost at least that much in a single "
+        f"day. The highlighted row corresponds to your selected confidence level of {confidence_pct:.0f}%."
+    )
+
+
 api_is_healthy, health_message = check_api_health()
 if api_is_healthy:
     st.success("✓ Connected to Risk API")
@@ -699,3 +767,7 @@ if (
             st.session_state["simulate_result"],
             float(st.session_state["last_payload"]["confidence_level"]),
         )
+    render_simulation_details(
+        st.session_state["simulate_result"],
+        float(st.session_state["last_payload"]["confidence_level"]),
+    )
