@@ -174,3 +174,60 @@ Passing output should look like:
 ...........                                                              [100%]
 11 passed in 0.51s
 ```
+
+## Running the Full Application
+
+Terminal 1 — Start the API backend:
+
+```bash
+ cd portfolio-risk-analytics
+uvicorn app.api.main:app --reload
+```
+
+Terminal 2 — Start the Streamlit UI:
+
+```bash
+ cd portfolio-risk-analytics
+streamlit run app/ui/streamlit_app.py
+```
+
+Both must be running at the same time. The UI calls the API on `http://localhost:8000`.
+
+## UI Walkthrough
+
+1. Open `http://localhost:8501` in your browser.
+2. Optionally load a sample portfolio from the dropdown.
+3. Enter tickers (one per line) and weights (one per line).
+4. Choose date range, confidence level, and simulation count.
+5. Click `Run Analysis`.
+6. Review the summary metrics, charts, and percentile table.
+
+## Screenshots
+
+(Add screenshots here after running the app locally)
+
+## Architecture Diagram
+
+(Add actual created diagram here once created)
+
+```text
+[User Browser]
+     ↓  HTTP (port 8501)
+[Streamlit UI]
+     ↓  HTTP POST /analyze (port 8000)
+[FastAPI Backend]
+     ↓  Python function calls
+[Analytics Engine]
+     ↓  yfinance HTTP
+[Market Data]
+```
+
+## Troubleshooting
+
+| Problem | Likely Cause | Fix |
+| --- | --- | --- |
+| UI shows API offline | FastAPI backend is not running or is running on a different port. | Start the backend with `uvicorn app.api.main:app --reload` and confirm it is reachable at `http://localhost:8000/health`. |
+| Analysis takes very long | Large simulation count, slow market-data fetch, or temporary Yahoo Finance delay. | Retry with a smaller simulation count first, then confirm your network and yfinance availability. |
+| Ticker not found error | One or more ticker symbols are invalid, delisted, or unsupported by Yahoo Finance. | Double-check the symbol spelling and try widely known NYSE/NASDAQ tickers first. |
+| Weights validation error in UI | Weights do not sum to `1.0`, include invalid numbers, or do not match ticker count. | Fix the entries manually or enable auto-normalize in the sidebar. |
+| Charts don't render | Plotly may not be installed in the active virtual environment. | Install Plotly with `pip install plotly`, then restart Streamlit. |
