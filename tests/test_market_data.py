@@ -51,3 +51,27 @@ def test_fetch_price_data_reuses_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     assert second_result.iloc[0, 0] == 100.0
 
     clear_market_data_cache()
+
+
+def test_fetch_price_data_does_not_cache_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Checks failed downloads are not cached permanently so a later retry still attempts a fresh market-data fetch.
+    clear_market_data_cache()
+    download_calls = {"count": 0}
+
+    def fake_download(*args, **kwargs) -> pd.DataFrame:
+        download_calls["count"] += 1
+        return pd.DataFrame()
+
+    monkeypatch.setattr("app.services.market_data.yf.download", fake_download)
+
+    with pytest.raises(ValueError, match="No market data returned"):
+        fetch_price_data(["AAPL", "MSFT"], "2021-01-01", "2021-02-01")
+
+    with pytest.raises(ValueError, match="No market data returned"):
+        fetch_price_data(["AAPL", "MSFT"], "2021-01-01", "2021-02-01")
+
+    assert download_calls["count"] == 2
+
+    clear_market_data_cache()
