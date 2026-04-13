@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
+import pandas as pd
 import streamlit as st
 import requests
 
@@ -301,6 +302,79 @@ def validate_and_build_payload(
     return payload, []
 
 
+def render_summary_metrics(result: dict, payload: dict) -> None:
+    """Render the top-level portfolio summary metrics and composition table.
+
+    Args:
+        result: Analyze endpoint response payload stored in session state.
+        payload: Last successfully submitted request payload.
+
+    Returns:
+        None. The function renders Streamlit components directly.
+    """
+
+    st.subheader("📈 Portfolio Summary")
+    st.write(f"Analysis for: {' · '.join(payload['tickers'])}")
+
+    mean_daily_return = float(result["mean_daily_return"])
+    annualized_volatility = float(result["annualized_volatility"])
+    var_95 = float(result["var_95"])
+    es_95 = float(result["es_95"])
+    var_99 = float(result["var_99"])
+    es_99 = float(result["es_99"])
+    confidence_level = float(payload["confidence_level"])
+    confidence_pct = confidence_level * 100
+
+    metric_columns = st.columns(4)
+    metric_columns[0].metric(
+        "Mean Daily Return",
+        f"{mean_daily_return:+.3%}",
+        delta=f"{mean_daily_return:+.3%}",
+        delta_color="normal",
+    )
+    metric_columns[1].metric(
+        "Annualized Volatility",
+        f"{annualized_volatility:.1%}",
+    )
+    metric_columns[2].metric(
+        "Value at Risk (95%)",
+        f"{var_95:.1%}",
+        help="The estimated maximum daily loss at 95% confidence",
+    )
+    metric_columns[3].metric(
+        "Expected Shortfall (95%)",
+        f"{es_95:.1%}",
+        help="Average loss in the worst 5% of scenarios",
+    )
+
+    st.info(
+        "📘 How to read these results:\n"
+        f"At {confidence_pct:.0f}% confidence, the estimated one-day VaR is {var_95:.1%}, "
+        f"meaning losses larger than this are expected on roughly {100 - confidence_pct:.0f}% "
+        "of trading days under the model's assumptions. "
+        f"The Expected Shortfall of {es_95:.1%} shows the average loss on those worst-case days. "
+        f"Annualized volatility of {annualized_volatility:.1%} reflects the overall return "
+        "variability of this portfolio over a year."
+    )
+
+    tail_columns = st.columns(2)
+    tail_columns[0].metric("VaR (99%)", f"{var_99:.1%}")
+    tail_columns[1].metric("ES (99%)", f"{es_99:.1%}")
+    st.caption(
+        "99% figures represent more extreme but less frequent tail scenarios."
+    )
+
+    st.subheader("Portfolio Composition")
+    weights_df = pd.DataFrame(
+        {
+            "Ticker": payload["tickers"],
+            "Weight": payload["weights"],
+            "Weight %": [f"{float(weight):.1%}" for weight in payload["weights"]],
+        }
+    )
+    st.dataframe(weights_df, use_container_width=True, hide_index=True)
+
+
 api_is_healthy, health_message = check_api_health()
 if api_is_healthy:
     st.success("✓ Connected to Risk API")
@@ -482,3 +556,14 @@ if run_clicked:
     st.session_state["analyze_result"] = analyze_result
     st.session_state["simulate_result"] = simulate_result
     st.session_state["last_payload"] = payload
+
+
+if (
+    "analyze_result" in st.session_state
+    and st.session_state["analyze_result"] is not None
+    and "last_payload" in st.session_state
+):
+    render_summary_metrics(
+        result=st.session_state["analyze_result"],
+        payload=st.session_state["last_payload"],
+    )
