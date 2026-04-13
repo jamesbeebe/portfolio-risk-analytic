@@ -106,6 +106,42 @@ class AnalyzeResponse(BaseModel):
     random_seed: int
 
 
+class SamplePortfoliosResponse(BaseModel):
+    """Response model for returning bundled sample portfolio definitions.
+
+    Attributes:
+        portfolios: List of sample portfolios shaped like analysis requests.
+        count: Number of sample portfolios returned.
+    """
+
+    portfolios: list[AnalyzeRequest]
+    count: int
+
+
+class SimulationResponse(BaseModel):
+    """Response model for detailed Monte Carlo simulation statistics.
+
+    Attributes:
+        tickers: Ordered list of analyzed tickers.
+        simulation_count: Number of Monte Carlo simulation paths used.
+        horizon_days: Holding period used in the simulation.
+        percentiles: Portfolio return values at selected percentile levels.
+        mean_return: Arithmetic mean of simulated portfolio returns.
+        std_dev: Standard deviation of simulated portfolio returns.
+        worst_case: Minimum simulated portfolio return.
+        best_case: Maximum simulated portfolio return.
+    """
+
+    tickers: list[str]
+    simulation_count: int
+    horizon_days: int
+    percentiles: dict[str, float]
+    mean_return: float
+    std_dev: float
+    worst_case: float
+    best_case: float
+
+
 class ErrorResponse(BaseModel):
     """Standard error payload returned by the API when a request fails.
 

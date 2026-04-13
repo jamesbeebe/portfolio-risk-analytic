@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+import numpy as np
 from pydantic import BaseModel
 import uvicorn
 
@@ -10,10 +14,15 @@ from app.models.api_models import (
     AnalyzeResponse,
     CorrelationMatrix,
     ErrorResponse,
+    SamplePortfoliosResponse,
+    SimulationResponse,
 )
 from app.models.portfolio import PortfolioInput
 from app.models.results import RiskResults
+from app.services.market_data import fetch_price_data
+from app.services.monte_carlo import run_monte_carlo_simulation
 from app.services.pipeline import run_risk_pipeline
+from app.services.portfolio_math import compute_daily_returns
 
 
 class HealthResponse(BaseModel):
@@ -37,6 +46,12 @@ app = FastAPI(
     ),
     version="0.1.0",
 )
+
+SAMPLE_PORTFOLIOS_PATH = Path("data/sample_portfolios.json")
+try:
+    SAMPLE_PORTFOLIOS_DATA = json.loads(SAMPLE_PORTFOLIOS_PATH.read_text())
+except FileNotFoundError:
+    SAMPLE_PORTFOLIOS_DATA = None
 
 
 @app.get("/", tags=["Root"])
@@ -66,6 +81,35 @@ def read_health() -> HealthResponse:
         version="0.1.0",
         message="Portfolio Risk API is running",
     )
+
+
+@app.get(
+    "/sample-portfolios",
+    response_model=SamplePortfoliosResponse,
+    response_model_exclude_none=True,
+    status_code=200,
+    tags=["Samples"],
+)
+def read_sample_portfolios() -> SamplePortfoliosResponse | JSONResponse:
+    """Return the bundled sample portfolio definitions used for demos.
+
+    Returns:
+        A SamplePortfoliosResponse on success, or a JSONResponse describing why
+        the sample data is unavailable.
+    """
+
+    if SAMPLE_PORTFOLIOS_DATA is None:
+        error_response = ErrorResponse(
+            error="data_unavailable",
+            detail="The sample portfolio data file is unavailable.",
+        )
+        return JSONResponse(status_code=503, content=error_response.model_dump())
+
+    portfolios = [
+        AnalyzeRequest(**portfolio_data)
+        for portfolio_data in SAMPLE_PORTFOLIOS_DATA["portfolios"]
+    ]
+    return SamplePortfoliosResponse(portfolios=portfolios, count=len(portfolios))
 
 
 @app.post(
@@ -124,6 +168,85 @@ def analyze_portfolio(request: AnalyzeRequest) -> AnalyzeResponse | JSONResponse
             simulation_count=risk_results.simulation_count,
             horizon_days=risk_results.horizon_days,
             random_seed=request.random_seed,
+        )
+    except ValueError as exc:
+        error_response = ErrorResponse(
+            error="validation_error",
+            detail=str(exc),
+        )
+        return JSONResponse(status_code=422, content=error_response.model_dump())
+    except KeyError as exc:
+        error_response = ErrorResponse(
+            error="data_error",
+            detail=f"Missing expected data field: {exc}",
+        )
+        return JSONResponse(status_code=422, content=error_response.model_dump())
+    except Exception as exc:
+        error_response = ErrorResponse(
+            error="internal_error",
+            detail=f"Unexpected server error: {exc}",
+        )
+        return JSONResponse(status_code=500, content=error_response.model_dump())
+
+
+@app.post(
+    "/simulate",
+    response_model=SimulationResponse,
+    response_model_exclude_none=True,
+    status_code=200,
+    tags=["Simulation"],
+)
+def simulate_portfolio(request: AnalyzeRequest) -> SimulationResponse | JSONResponse:
+    """Run Monte Carlo simulation and return richer distribution statistics.
+
+    Args:
+        request: API request body containing portfolio inputs and simulation settings.
+
+    Returns:
+        A SimulationResponse on success, or a JSONResponse containing a structured
+        error payload when validation or runtime failures occur.
+    """
+
+    try:
+        prices = fetch_price_data(
+            tickers=request.tickers,
+            start_date=request.start_date,
+            end_date=request.end_date,
+        )
+        daily_returns = compute_daily_returns(prices)
+        simulated_returns = run_monte_carlo_simulation(
+            returns=daily_returns,
+            weights=request.weights,
+            simulations=request.simulations,
+            horizon_days=request.horizon_days,
+            random_seed=request.random_seed,
+        )
+
+        percentile_levels = {
+            "p1": 1,
+            "p5": 5,
+            "p10": 10,
+            "p25": 25,
+            "p50": 50,
+            "p75": 75,
+            "p90": 90,
+            "p95": 95,
+            "p99": 99,
+        }
+        percentiles = {
+            label: float(np.percentile(simulated_returns, level))
+            for label, level in percentile_levels.items()
+        }
+
+        return SimulationResponse(
+            tickers=request.tickers,
+            simulation_count=request.simulations,
+            horizon_days=request.horizon_days,
+            percentiles=percentiles,
+            mean_return=float(np.mean(simulated_returns)),
+            std_dev=float(np.std(simulated_returns)),
+            worst_case=float(np.min(simulated_returns)),
+            best_case=float(np.max(simulated_returns)),
         )
     except ValueError as exc:
         error_response = ErrorResponse(
