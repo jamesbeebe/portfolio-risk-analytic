@@ -1,10 +1,25 @@
 import pandas as pd
+import pytest
 from fastapi.testclient import TestClient
 
 from app.api.main import app
 from app.models.results import RiskResults
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def disable_rate_limiter_for_api_tests() -> None:
+    """Disable backend rate limiting so endpoint tests remain deterministic.
+
+    Returns:
+        None. The fixture temporarily disables the shared limiter for this file.
+    """
+
+    previous_enabled = app.state.limiter.enabled
+    app.state.limiter.enabled = False
+    yield
+    app.state.limiter.enabled = previous_enabled
 
 
 def _balanced_portfolio_payload() -> dict:

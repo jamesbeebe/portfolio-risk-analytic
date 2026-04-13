@@ -12,8 +12,19 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import numpy as np
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 import uvicorn
 
+from app.config import (
+    ANALYZE_RATE_LIMIT,
+    HEALTH_RATE_LIMIT,
+    RATE_LIMIT_RETRY_AFTER_SECONDS,
+    ROOT_RATE_LIMIT,
+    SAMPLE_PORTFOLIOS_RATE_LIMIT,
+    SIMULATE_RATE_LIMIT,
+)
 from app.models.api_models import (
     AnalyzeRequest,
     AnalyzeResponse,
@@ -34,6 +45,7 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
 logger = logging.getLogger(__name__)
+limiter = Limiter(key_func=get_remote_address, default_limits=[])
 
 
 class HealthResponse(BaseModel):
@@ -57,6 +69,7 @@ app = FastAPI(
     ),
     version="0.1.0",
 )
+app.state.limiter = limiter
 
 SAMPLE_PORTFOLIOS_PATH = Path("data/sample_portfolios.json")
 try:
@@ -95,6 +108,41 @@ async def log_requests(request: Request, call_next) -> JSONResponse:
         duration_ms,
     )
     return response
+
+
+@app.exception_handler(RateLimitExceeded)
+async def handle_rate_limit_exceeded(
+    request: Request, exc: RateLimitExceeded
+) -> JSONResponse:
+    """Return a professional 429 response when an endpoint limit is exceeded.
+
+    Args:
+        request: The incoming FastAPI request object.
+        exc: The slowapi rate-limit exception raised for the request.
+
+    Returns:
+        A JSONResponse containing a readable rate-limit error payload.
+    """
+
+    logger.warning(
+        "Rate limit exceeded | method=%s path=%s detail=%s",
+        request.method,
+        request.url.path,
+        exc.detail,
+    )
+    error_response = ErrorResponse(
+        error="rate_limit_exceeded",
+        detail=(
+            "Rate limit exceeded for this endpoint. Please wait about "
+            f"{RATE_LIMIT_RETRY_AFTER_SECONDS} seconds before trying again."
+        ),
+        field=None,
+    )
+    return JSONResponse(
+        status_code=429,
+        content=error_response.model_dump(),
+        headers={"Retry-After": str(RATE_LIMIT_RETRY_AFTER_SECONDS)},
+    )
 
 
 @app.exception_handler(RequestValidationError)
@@ -158,7 +206,8 @@ async def handle_unexpected_exception(
 
 
 @app.get("/", tags=["Root"])
-def read_root() -> dict[str, str]:
+@limiter.limit(ROOT_RATE_LIMIT)
+def read_root(request: Request) -> dict[str, str]:
     """Return a welcome message and point users to the interactive API docs.
 
     Returns:
@@ -172,7 +221,8 @@ def read_root() -> dict[str, str]:
 
 
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
-def read_health() -> HealthResponse:
+@limiter.limit(HEALTH_RATE_LIMIT)
+def read_health(request: Request) -> HealthResponse:
     """Return a simple health-check payload for service monitoring.
 
     Returns:
@@ -193,7 +243,8 @@ def read_health() -> HealthResponse:
     status_code=200,
     tags=["Samples"],
 )
-def read_sample_portfolios() -> SamplePortfoliosResponse | JSONResponse:
+@limiter.limit(SAMPLE_PORTFOLIOS_RATE_LIMIT)
+def read_sample_portfolios(request: Request) -> SamplePortfoliosResponse | JSONResponse:
     """Return the bundled sample portfolio definitions used for demos.
 
     Returns:
@@ -222,11 +273,15 @@ def read_sample_portfolios() -> SamplePortfoliosResponse | JSONResponse:
     status_code=200,
     tags=["Analysis"],
 )
-def analyze_portfolio(request: AnalyzeRequest) -> AnalyzeResponse | JSONResponse:
+@limiter.limit(ANALYZE_RATE_LIMIT)
+def analyze_portfolio(
+    request: Request, payload: AnalyzeRequest
+) -> AnalyzeResponse | JSONResponse:
     """Run the portfolio risk pipeline and return API-shaped analytics results.
 
     Args:
-        request: API request body containing portfolio inputs and simulation settings.
+        request: FastAPI request object used by the rate-limiting layer.
+        payload: API request body containing portfolio inputs and simulation settings.
 
     Returns:
         An AnalyzeResponse on success, or a JSONResponse containing a structured
@@ -235,13 +290,13 @@ def analyze_portfolio(request: AnalyzeRequest) -> AnalyzeResponse | JSONResponse
 
     try:
         portfolio_input = PortfolioInput(
-            tickers=request.tickers,
-            weights=request.weights,
-            start_date=request.start_date,
-            end_date=request.end_date,
-            confidence_level=request.confidence_level,
-            simulations=request.simulations,
-            horizon_days=request.horizon_days,
+            tickers=payload.tickers,
+            weights=payload.weights,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            confidence_level=payload.confidence_level,
+            simulations=payload.simulations,
+            horizon_days=payload.horizon_days,
         )
 
         risk_results: RiskResults = run_risk_pipeline(portfolio_input)
@@ -270,7 +325,7 @@ def analyze_portfolio(request: AnalyzeRequest) -> AnalyzeResponse | JSONResponse
             ),
             simulation_count=risk_results.simulation_count,
             horizon_days=risk_results.horizon_days,
-            random_seed=request.random_seed,
+            random_seed=payload.random_seed,
         )
     except ValueError as exc:
         error_response = ErrorResponse(
@@ -299,11 +354,15 @@ def analyze_portfolio(request: AnalyzeRequest) -> AnalyzeResponse | JSONResponse
     status_code=200,
     tags=["Simulation"],
 )
-def simulate_portfolio(request: AnalyzeRequest) -> SimulationResponse | JSONResponse:
+@limiter.limit(SIMULATE_RATE_LIMIT)
+def simulate_portfolio(
+    request: Request, payload: AnalyzeRequest
+) -> SimulationResponse | JSONResponse:
     """Run Monte Carlo simulation and return richer distribution statistics.
 
     Args:
-        request: API request body containing portfolio inputs and simulation settings.
+        request: FastAPI request object used by the rate-limiting layer.
+        payload: API request body containing portfolio inputs and simulation settings.
 
     Returns:
         A SimulationResponse on success, or a JSONResponse containing a structured
@@ -312,17 +371,17 @@ def simulate_portfolio(request: AnalyzeRequest) -> SimulationResponse | JSONResp
 
     try:
         prices = fetch_price_data(
-            tickers=request.tickers,
-            start_date=request.start_date,
-            end_date=request.end_date,
+            tickers=payload.tickers,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
         )
         daily_returns = compute_daily_returns(prices)
         simulated_returns = run_monte_carlo_simulation(
             returns=daily_returns,
-            weights=request.weights,
-            simulations=request.simulations,
-            horizon_days=request.horizon_days,
-            random_seed=request.random_seed,
+            weights=payload.weights,
+            simulations=payload.simulations,
+            horizon_days=payload.horizon_days,
+            random_seed=payload.random_seed,
         )
 
         percentile_levels = {
@@ -342,9 +401,9 @@ def simulate_portfolio(request: AnalyzeRequest) -> SimulationResponse | JSONResp
         }
 
         return SimulationResponse(
-            tickers=request.tickers,
-            simulation_count=request.simulations,
-            horizon_days=request.horizon_days,
+            tickers=payload.tickers,
+            simulation_count=payload.simulations,
+            horizon_days=payload.horizon_days,
             percentiles=percentiles,
             mean_return=float(np.mean(simulated_returns)),
             std_dev=float(np.std(simulated_returns)),

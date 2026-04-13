@@ -27,3 +27,11 @@ class Config:
 
 # Module-level default instance for convenience
 DEFAULTS = Config()
+
+# Public demo hardening settings for backend request limiting.
+HEALTH_RATE_LIMIT = "60/minute"
+ROOT_RATE_LIMIT = "30/minute"
+SAMPLE_PORTFOLIOS_RATE_LIMIT = "20/minute"
+ANALYZE_RATE_LIMIT = "10/minute"
+SIMULATE_RATE_LIMIT = "5/minute"
+RATE_LIMIT_RETRY_AFTER_SECONDS = 60
