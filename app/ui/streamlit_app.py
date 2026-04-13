@@ -21,6 +21,7 @@ DEFAULT_START_DATE = "2021-01-01"
 DEFAULT_END_DATE = "2026-01-01"
 DEFAULT_CONFIDENCE = 0.95
 DEFAULT_SIMULATIONS = 10000
+HISTOGRAM_RECONSTRUCTION_POINTS = 10000
 SECTION_DIVIDER = "---"
 REQUEST_TIMEOUT_SECONDS = 10
 
@@ -451,7 +452,8 @@ def render_simulation_histogram(sim_result: dict, confidence_level: float) -> No
         dtype=float,
     )
 
-    synthetic_percentile_grid = np.linspace(1, 99, 500)
+    reconstruction_points = HISTOGRAM_RECONSTRUCTION_POINTS
+    synthetic_percentile_grid = np.linspace(1, 99, reconstruction_points)
     synthetic_returns = np.interp(
         synthetic_percentile_grid,
         percentile_positions,
@@ -466,7 +468,8 @@ def render_simulation_histogram(sim_result: dict, confidence_level: float) -> No
         color_discrete_sequence=["#2c7fb8"],
         title=(
             "Simulated Portfolio Return Distribution"
-            "<br><sup>(Approximate distribution — reconstructed from percentiles)</sup>"
+            "<br><sup>(Approximate distribution — reconstructed from percentiles "
+            f"using {reconstruction_points:,} synthetic points)</sup>"
         ),
         labels={"Portfolio Return": "Portfolio Return", "count": "Frequency"},
     )
@@ -489,6 +492,8 @@ def render_simulation_histogram(sim_result: dict, confidence_level: float) -> No
     st.info(
         "📘 This histogram shows the distribution of simulated one-day portfolio "
         f"returns across {sim_result['simulation_count']:,} Monte Carlo scenarios. "
+        f"The chart shape is reconstructed from percentile summaries using a fixed "
+        f"{reconstruction_points:,}-point synthetic sample for consistent UI performance. "
         "The red dashed line marks the VaR threshold — returns to the left of this "
         "line represent the tail losses used to compute Expected Shortfall."
     )
