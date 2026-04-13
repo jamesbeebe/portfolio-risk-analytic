@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
+from time import perf_counter
+from datetime import datetime, timezone
 
 from fastapi import FastAPI
+from fastapi import Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import numpy as np
 from pydantic import BaseModel
@@ -23,6 +28,12 @@ from app.services.market_data import fetch_price_data
 from app.services.monte_carlo import run_monte_carlo_simulation
 from app.services.pipeline import run_risk_pipeline
 from app.services.portfolio_math import compute_daily_returns
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 
 class HealthResponse(BaseModel):
@@ -52,6 +63,98 @@ try:
     SAMPLE_PORTFOLIOS_DATA = json.loads(SAMPLE_PORTFOLIOS_PATH.read_text())
 except FileNotFoundError:
     SAMPLE_PORTFOLIOS_DATA = None
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next) -> JSONResponse:
+    """Log incoming requests and outgoing responses for basic API observability.
+
+    Args:
+        request: The incoming FastAPI request object.
+        call_next: The next ASGI handler in the request pipeline.
+
+    Returns:
+        The response produced by downstream handlers.
+    """
+
+    request_timestamp = datetime.now(timezone.utc).isoformat()
+    start_time = perf_counter()
+    logger.info(
+        "Incoming request | method=%s path=%s timestamp=%s",
+        request.method,
+        request.url.path,
+        request_timestamp,
+    )
+    response = await call_next(request)
+    duration_ms = (perf_counter() - start_time) * 1000
+    logger.info(
+        "Outgoing response | method=%s path=%s status_code=%s duration_ms=%.2f",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
+    return response
+
+
+@app.exception_handler(RequestValidationError)
+async def handle_request_validation_error(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Return a standardized error payload for FastAPI request validation failures.
+
+    Args:
+        request: The incoming FastAPI request object.
+        exc: The validation error raised before the route handler executes.
+
+    Returns:
+        A JSONResponse containing a normalized ErrorResponse payload.
+    """
+
+    # This handler is needed because FastAPI validates the request body before
+    # entering the route function, so route-level try/except blocks never see
+    # these schema and parsing failures.
+    first_error = exc.errors()[0] if exc.errors() else {}
+    error_location = first_error.get("loc", [])
+    field = ".".join(str(item) for item in error_location[1:]) or None
+    detail = first_error.get("msg", "Request validation failed.")
+
+    error_response = ErrorResponse(
+        error="validation_error",
+        detail=detail,
+        field=field,
+    )
+    return JSONResponse(status_code=422, content=error_response.model_dump())
+
+
+@app.exception_handler(Exception)
+async def handle_unexpected_exception(
+    request: Request, exc: Exception
+) -> JSONResponse:
+    """Log and normalize unexpected server exceptions into a 500 response.
+
+    Args:
+        request: The incoming FastAPI request object.
+        exc: The uncaught exception raised during request processing.
+
+    Returns:
+        A JSONResponse containing a generic server-error payload.
+    """
+
+    # Logging is better than print in a server application because it provides
+    # levels, timestamps, and centralized formatting that work consistently in
+    # development, tests, and deployed environments.
+    logger.exception(
+        "Unhandled exception | method=%s path=%s",
+        request.method,
+        request.url.path,
+        exc_info=exc,
+    )
+    error_response = ErrorResponse(
+        error="unexpected_error",
+        detail="An unexpected server error occurred.",
+    )
+    return JSONResponse(status_code=500, content=error_response.model_dump())
 
 
 @app.get("/", tags=["Root"])
