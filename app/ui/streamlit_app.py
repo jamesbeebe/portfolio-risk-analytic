@@ -379,6 +379,33 @@ def render_summary_metrics(result: dict, payload: dict) -> None:
     st.dataframe(weights_df, use_container_width=True, hide_index=True)
 
 
+def render_api_error(error_message: str, endpoint: str) -> None:
+    """Render a consistent API error state with troubleshooting guidance.
+
+    Args:
+        error_message: Human-readable error text to show the user.
+        endpoint: Backend endpoint name associated with the failure.
+
+    Returns:
+        None. The function renders Streamlit components directly.
+    """
+
+    st.error(error_message)
+    with st.expander("🔧 Troubleshooting"):
+        st.markdown(
+            f"• Make sure the FastAPI backend is running:\n"
+            f"  `uvicorn app.api.main:app --reload`\n"
+            f"• Check that your tickers are valid NYSE/NASDAQ symbols\n"
+            f"• If the date range is very recent, yfinance data may have a short delay\n"
+            f"• Endpoint that failed: {endpoint}"
+        )
+
+    if st.button("↩ Go back and edit inputs"):
+        for key in ["analyze_result", "simulate_result", "last_payload"]:
+            st.session_state.pop(key, None)
+        st.rerun()
+
+
 def render_correlation_matrix(result: dict) -> None:
     """Render the portfolio correlation matrix as a Plotly heatmap.
 
@@ -591,6 +618,7 @@ st.session_state.setdefault("sidebar_simulations", DEFAULT_SIMULATIONS)
 st.session_state.setdefault("sidebar_random_seed", 42)
 st.session_state.setdefault("sidebar_auto_normalize", False)
 st.session_state.setdefault("selected_sample_portfolio", "— build manually —")
+st.session_state.setdefault("show_success_toast", False)
 
 sample_portfolios, sample_portfolios_error = fetch_sample_portfolios()
 sample_portfolio_options = ["— build manually —"]
@@ -709,6 +737,17 @@ with st.sidebar:
         type="primary",
         use_container_width=True,
     )
+    st.divider()
+    reset_clicked = st.button("🔄 Reset", use_container_width=True)
+
+    if reset_clicked:
+        for key in list(st.session_state.keys()):
+            st.session_state.pop(key, None)
+        st.rerun()
+
+    st.divider()
+    st.caption("Portfolio Risk Analyzer v0.1.0")
+    st.caption("Built with FastAPI · Streamlit · Monte Carlo simulation")
 
 
 if run_clicked:
@@ -733,21 +772,22 @@ if run_clicked:
             st.error(error_message)
         st.stop()
 
-    with st.spinner("Running analysis... this may take a few seconds"):
+    with st.spinner("⏳ Fetching market data and running simulations..."):
         analyze_result, analyze_error = call_analyze(payload)
         simulate_result, simulate_error = call_simulate(payload)
 
     if analyze_error:
-        st.error(analyze_error)
+        render_api_error(analyze_error, "/analyze")
         st.stop()
 
     if simulate_error:
-        st.error(simulate_error)
+        render_api_error(simulate_error, "/simulate")
         st.stop()
 
     st.session_state["analyze_result"] = analyze_result
     st.session_state["simulate_result"] = simulate_result
     st.session_state["last_payload"] = payload
+    st.session_state["show_success_toast"] = True
 
 
 if (
@@ -771,3 +811,18 @@ if (
         st.session_state["simulate_result"],
         float(st.session_state["last_payload"]["confidence_level"]),
     )
+
+    if st.session_state.get("show_success_toast"):
+        # A toast is preferable here because it confirms success without taking up
+        # permanent layout space the way a full success banner would.
+        st.toast("✅ Analysis complete!", icon="📊")
+        st.session_state["show_success_toast"] = False
+else:
+    st.info("👈 Enter your portfolio in the sidebar and click Run Analysis to get started.")
+    with st.expander("📖 How this works"):
+        st.markdown(
+            "1. Enter ticker symbols and portfolio weights in the sidebar\n"
+            "2. Choose your date range and analysis settings\n"
+            "3. Click Run Analysis — the app will call the risk engine\n"
+            "4. Results include volatility, Monte Carlo VaR, Expected Shortfall, and a full simulation distribution"
+        )
