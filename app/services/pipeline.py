@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 from app.models.portfolio import PortfolioInput
 from app.models.results import RiskResults
 from app.services.market_data import fetch_price_data, validate_tickers
@@ -63,20 +60,3 @@ def run_risk_pipeline(portfolio: PortfolioInput) -> RiskResults:
         simulation_count=portfolio.simulations,
         horizon_days=portfolio.horizon_days,
     )
-
-
-if __name__ == "__main__":
-    sample_file = Path("data/sample_portfolios.json")
-    sample_payload = json.loads(sample_file.read_text())
-    first_portfolio = sample_payload["portfolios"][0]
-    portfolio_input = PortfolioInput(**first_portfolio)
-    results = run_risk_pipeline(portfolio_input)
-
-    print("=== Portfolio Risk Report ===")
-    print(f"Tickers: {', '.join(results.tickers)}")
-    print(f"Annualized Volatility: {results.annualized_volatility:.1%}")
-    print(f"Mean Daily Return: {results.mean_daily_return:.2%}")
-    print(f"VaR  (95%): {results.var_95:.1%}")
-    print(f"ES   (95%): {results.es_95:.1%}")
-    print(f"VaR  (99%): {results.var_99:.1%}")
-    print(f"ES   (99%): {results.es_99:.1%}")
