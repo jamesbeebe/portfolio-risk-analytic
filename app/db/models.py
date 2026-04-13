@@ -45,7 +45,6 @@ class SavedPortfolio(Base):
     # runs that belong to one saved portfolio as `saved_portfolio.analysis_runs`.
     analysis_runs: Mapped[list["AnalysisRun"]] = relationship(
         back_populates="portfolio",
-        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:
