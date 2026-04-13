@@ -4,9 +4,13 @@ numpy
 fastapi
 uvicorn
 pydantic
+python-dotenv
 streamlit
 pytest
 httpx
 slowapi
 sqlalchemy
 alembic
+# Required for PostgreSQL / Supabase connection
+# Not needed for local SQLite development
+psycopg2-binary

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -16,8 +16,8 @@ class SavedPortfolio(Base):
     Attributes:
         id: Auto-incrementing primary key for the saved portfolio row.
         name: User-facing portfolio name.
-        tickers: JSON string snapshot of ticker symbols.
-        weights: JSON string snapshot of portfolio weights.
+        tickers: JSON array snapshot of ticker symbols.
+        weights: JSON array snapshot of portfolio weights.
         start_date: Historical analysis start date.
         end_date: Historical analysis end date.
         confidence_level: Risk confidence level used for analysis.
@@ -31,8 +31,11 @@ class SavedPortfolio(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    tickers: Mapped[str] = mapped_column(Text, nullable=False)
-    weights: Mapped[str] = mapped_column(Text, nullable=False)
+    # JSON is better than Text here because the data is structurally a list, not
+    # an arbitrary blob of characters. SQLAlchemy maps Python lists cleanly, and
+    # both modern SQLite and PostgreSQL can store JSON values natively.
+    tickers: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    weights: Mapped[list[float]] = mapped_column(JSON, nullable=False)
     start_date: Mapped[str] = mapped_column(String(10), nullable=False)
     end_date: Mapped[str] = mapped_column(String(10), nullable=False)
     confidence_level: Mapped[float] = mapped_column(Float, nullable=False)
@@ -64,8 +67,8 @@ class AnalysisRun(Base):
     Attributes:
         id: Auto-incrementing primary key for the analysis run row.
         portfolio_id: Optional foreign key linking to a saved portfolio.
-        tickers: JSON string snapshot of tickers used in the run.
-        weights: JSON string snapshot of weights used in the run.
+        tickers: JSON array snapshot of tickers used in the run.
+        weights: JSON array snapshot of weights used in the run.
         mean_daily_return: Historical mean daily portfolio return.
         annualized_volatility: Annualized portfolio volatility.
         var_95: 95% Value at Risk.
@@ -86,8 +89,8 @@ class AnalysisRun(Base):
         ForeignKey("saved_portfolios.id"),
         nullable=True,
     )
-    tickers: Mapped[str] = mapped_column(Text, nullable=False)
-    weights: Mapped[str] = mapped_column(Text, nullable=False)
+    tickers: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    weights: Mapped[list[float]] = mapped_column(JSON, nullable=False)
     mean_daily_return: Mapped[float] = mapped_column(Float, nullable=False)
     annualized_volatility: Mapped[float] = mapped_column(Float, nullable=False)
     var_95: Mapped[float] = mapped_column(Float, nullable=False)

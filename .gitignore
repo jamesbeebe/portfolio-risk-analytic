@@ -43,6 +43,9 @@ coverage.xml
 Thumbs.db
 
 # Environment variables
+# `.env` files often contain real credentials, connection strings, and secrets.
+# They should never be committed because rotating exposed secrets is painful and
+# unnecessary when a safe template file like `.env.example` exists in Git.
 .env
 
 # Local database files

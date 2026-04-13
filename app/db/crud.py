@@ -11,8 +11,6 @@ This also makes testing easier because database behavior can be exercised
 directly, without having to go through the entire web stack for every case.
 """
 
-import json
-
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
@@ -38,13 +36,10 @@ def save_portfolio(
         The newly created SavedPortfolio ORM object after commit and refresh.
     """
 
-    # We store lists as JSON strings because relational tables store scalar column
-    # values, not native Python lists. JSON lets us preserve the full ordered list
-    # structure without resorting to a fragile comma-separated string format.
     saved_portfolio = SavedPortfolio(
         name=name,
-        tickers=json.dumps(portfolio.tickers),
-        weights=json.dumps(portfolio.weights),
+        tickers=portfolio.tickers,
+        weights=portfolio.weights,
         start_date=portfolio.start_date,
         end_date=portfolio.end_date,
         confidence_level=portfolio.confidence_level,
@@ -79,8 +74,8 @@ def save_analysis_run(
 
     analysis_run = AnalysisRun(
         portfolio_id=portfolio_id,
-        tickers=json.dumps(result.tickers),
-        weights=json.dumps(result.weights),
+        tickers=result.tickers,
+        weights=result.weights,
         mean_daily_return=result.mean_daily_return,
         annualized_volatility=result.annualized_volatility,
         var_95=result.var_95,
@@ -210,8 +205,8 @@ def deserialize_portfolio_to_request(portfolio: SavedPortfolio) -> AnalyzeReques
     """
 
     return AnalyzeRequest(
-        tickers=json.loads(portfolio.tickers),
-        weights=json.loads(portfolio.weights),
+        tickers=portfolio.tickers,
+        weights=portfolio.weights,
         start_date=portfolio.start_date,
         end_date=portfolio.end_date,
         confidence_level=portfolio.confidence_level,

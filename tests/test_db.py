@@ -153,8 +153,8 @@ def test_save_and_retrieve_portfolio(test_db: Session) -> None:
 
     assert retrieved is not None
     assert retrieved.name == "Balanced ETF"
-    assert retrieved.tickers == '["AAPL", "MSFT", "SPY", "GLD"]'
-    assert retrieved.weights == "[0.25, 0.25, 0.3, 0.2]"
+    assert retrieved.tickers == ["AAPL", "MSFT", "SPY", "GLD"]
+    assert retrieved.weights == [0.25, 0.25, 0.3, 0.2]
     assert retrieved.created_at is not None
 
 

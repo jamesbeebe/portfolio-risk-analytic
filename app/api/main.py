@@ -117,8 +117,8 @@ def serialize_saved_portfolio(portfolio: SavedPortfolio) -> SavedPortfolioRespon
     return SavedPortfolioResponse(
         id=portfolio.id,
         name=portfolio.name,
-        tickers=json.loads(portfolio.tickers),
-        weights=json.loads(portfolio.weights),
+        tickers=portfolio.tickers,
+        weights=portfolio.weights,
         created_at=portfolio.created_at.isoformat(),
         notes=portfolio.notes,
     )
@@ -136,8 +136,8 @@ def serialize_analysis_run(run: AnalysisRun) -> AnalysisRunResponse:
 
     return AnalysisRunResponse(
         id=run.id,
-        tickers=json.loads(run.tickers),
-        weights=json.loads(run.weights),
+        tickers=run.tickers,
+        weights=run.weights,
         mean_daily_return=run.mean_daily_return,
         annualized_volatility=run.annualized_volatility,
         var_95=run.var_95,

@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import os
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
+
+load_dotenv()
 
 # This connection string points SQLAlchemy at a local SQLite file named
 # `portfolio_risk.db` in the project root. When the app later moves to
@@ -11,15 +14,19 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 # `postgresql+psycopg://user:password@host:5432/database`.
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./portfolio_risk.db")
 
-is_sqlite = DATABASE_URL.startswith("sqlite")
+is_sqlite = "sqlite" in DATABASE_URL
 
-# SQLite needs `check_same_thread=False` because the same application can access
-# the database from different threads during local development. PostgreSQL does
-# not need this because it is a client/server database designed for concurrent use.
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False} if is_sqlite else {},
-)
+if is_sqlite:
+    # SQLite needs `check_same_thread=False` because the same application can
+    # access the database from different threads during local development.
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False},
+    )
+else:
+    # PostgreSQL is a client/server database built for concurrent connections,
+    # so it does not need SQLite's thread-specific connection argument.
+    engine = create_engine(DATABASE_URL)
 
 # `autocommit=False` means SQLAlchemy will not save changes automatically; we
 # explicitly call `commit()` when we are ready. `autoflush=False` means pending
