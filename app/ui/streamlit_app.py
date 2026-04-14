@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import time
 
 import numpy as np
 import pandas as pd
@@ -8,6 +9,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 import requests
+from streamlit.errors import StreamlitSecretNotFoundError
 
 st.set_page_config(
     page_title="Portfolio Risk Analyzer",
@@ -16,7 +18,14 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-API_BASE_URL = "http://localhost:8000"
+# `st.secrets` is Streamlit's built-in secret/config store. On Streamlit Cloud,
+# values are supplied through the Secrets UI instead of a committed file. We
+# fall back to localhost when secrets are missing so the same app works for both
+# local development and the deployed frontend without changing source code.
+try:
+    API_BASE_URL = st.secrets["api"]["base_url"]
+except (KeyError, FileNotFoundError, StreamlitSecretNotFoundError):
+    API_BASE_URL = "http://localhost:8000"
 DEFAULT_START_DATE = "2021-01-01"
 DEFAULT_END_DATE = "2026-01-01"
 DEFAULT_CONFIDENCE = 0.95
@@ -98,21 +107,39 @@ def check_api_health() -> tuple[bool, str]:
         the backend responds successfully, and `message` explains the result.
     """
 
-    try:
-        response = requests.get(
-            f"{API_BASE_URL}/health",
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        )
-    except requests.RequestException:
-        return False, (
-            "Unable to connect to the Risk API at "
-            f"{API_BASE_URL}. Start the FastAPI backend and refresh this page."
-        )
+    # Free-tier Render services can sleep when idle, so the first health check
+    # may fail during cold start. Retrying here hides that transient wake-up
+    # delay from users and avoids treating a recoverable startup lag as an error.
+    last_error_message = (
+        f"Unable to connect to the Risk API at {API_BASE_URL}. "
+        "Start the FastAPI backend and refresh this page."
+    )
 
-    if response.status_code == 200:
-        return True, "API is online"
+    for attempt in range(1, 4):
+        try:
+            response = requests.get(
+                f"{API_BASE_URL}/health",
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
+        except requests.RequestException:
+            response = None
+        else:
+            if response.status_code == 200:
+                return True, "API is online"
+            last_error_message = (
+                f"The Risk API returned status code {response.status_code}."
+            )
 
-    return False, f"The Risk API returned status code {response.status_code}."
+        if attempt < 3:
+            with st.spinner(
+                "⏳ Waking up the API server — this may take up to 30 seconds on first load..."
+            ):
+                st.warning(
+                    "⏳ Waking up the API server — this may take up to 30 seconds on first load..."
+                )
+                time.sleep(10)
+
+    return False, last_error_message
 
 
 def fetch_sample_portfolios() -> tuple[list | None, str | None]:

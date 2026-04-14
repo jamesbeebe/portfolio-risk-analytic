@@ -47,6 +47,7 @@ Thumbs.db
 # They should never be committed because rotating exposed secrets is painful and
 # unnecessary when a safe template file like `.env.example` exists in Git.
 .env
+.streamlit/secrets.toml
 
 # Local database files
 *.db

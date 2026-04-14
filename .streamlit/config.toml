@@ -1,0 +1,12 @@
+# Streamlit theme and server settings for local and cloud deployments.
+# `headless = true` means Streamlit runs without trying to open a local browser,
+# which is the correct behavior on cloud hosts like Streamlit Community Cloud.
+[theme]
+primaryColor = "#2563EB"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F1F5F9"
+textColor = "#1E293B"
+
+[server]
+headless = true
+enableCORS = false
