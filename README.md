@@ -1,3 +1,9 @@
+🚀 Live Demo: [portfolio-risk-analytic-jeukzztecya9yqtujh5ish.streamlit.app](https://portfolio-risk-analytic-jeukzztecya9yqtujh5ish.streamlit.app)
+
+⚙️ API Docs: [portfolio-risk-analytic.onrender.com/docs](https://portfolio-risk-analytic.onrender.com/docs)
+
+Monte Carlo portfolio risk analysis with a Streamlit frontend, FastAPI backend, Supabase persistence, and Yahoo Finance market data.
+
 # Portfolio Risk Analytics Platform
 
 ## Project Overview
@@ -206,20 +212,16 @@ Both must be running at the same time. The UI calls the API on `http://localhost
 
 (Add screenshots here after running the app locally)
 
-## Architecture Diagram
-
-(Add actual created diagram here once created)
+## Architecture Overview
 
 ```text
 [User Browser]
-     ↓  HTTP (port 8501)
-[Streamlit UI]
-     ↓  HTTP POST /analyze (port 8000)
-[FastAPI Backend]
-     ↓  Python function calls
-[Analytics Engine]
-     ↓  yfinance HTTP
-[Market Data]
+     ↓
+[Streamlit Cloud]
+     ↓ HTTPS
+[Render — FastAPI]
+     ↓            ↓
+[Supabase DB]  [Yahoo Finance]
 ```
 
 ## Troubleshooting
@@ -270,3 +272,114 @@ Possible future upgrades for a more production-oriented deployment include:
 - authentication for private or admin use
 - external monitoring and alerting
 - container deployment hardening
+
+## Database Schema
+
+### SavedPortfolio
+
+| Column | Purpose |
+| --- | --- |
+| `id` | Primary key for the saved portfolio record |
+| `name` | User-facing portfolio name |
+| `tickers` | JSON array of ticker symbols |
+| `weights` | JSON array of portfolio weights |
+| `start_date` | Historical analysis window start date |
+| `end_date` | Historical analysis window end date |
+| `confidence_level` | Confidence level used for risk analysis |
+| `simulations` | Monte Carlo simulation count |
+| `created_at` | UTC timestamp when the portfolio was saved |
+| `notes` | Optional user notes |
+
+### AnalysisRun
+
+| Column | Purpose |
+| --- | --- |
+| `id` | Primary key for the analysis run record |
+| `portfolio_id` | Optional foreign key to `SavedPortfolio` |
+| `tickers` | JSON array snapshot of analyzed ticker symbols |
+| `weights` | JSON array snapshot of analyzed weights |
+| `mean_daily_return` | Historical mean daily return |
+| `annualized_volatility` | Annualized portfolio volatility |
+| `var_95` | 95% Value at Risk |
+| `es_95` | 95% Expected Shortfall |
+| `var_99` | 99% Value at Risk |
+| `es_99` | 99% Expected Shortfall |
+| `simulation_count` | Number of simulations used |
+| `ran_at` | UTC timestamp when the run was recorded |
+| `duration_ms` | Optional runtime duration in milliseconds |
+
+## Deployment Guide
+
+1. Fork the repository to your own GitHub account.
+2. Create a Supabase project and copy the `DATABASE_URL` connection string.
+3. Deploy the FastAPI backend to Render and set `DATABASE_URL` in the Render environment settings.
+4. Deploy the Streamlit frontend to Streamlit Community Cloud and set `api.base_url` to your Render URL in the Secrets UI.
+5. Open the public Streamlit URL and verify the app works end to end.
+
+## Environment Variables Reference
+
+| Variable | Required | Description | Example |
+| --- | --- | --- | --- |
+| `DATABASE_URL` | Yes for persistence | Database connection string for local SQLite or Supabase PostgreSQL | `postgresql://postgres.project-ref:password@aws-1-us-east-1.pooler.supabase.com:5432/postgres` |
+| `EXTRA_CORS_ORIGINS` | No | Comma-separated deployed frontend origins allowed to call the API from a browser | `https://your-app.streamlit.app,https://portfolio-risk-analytic.onrender.com` |
+| `API_HOST` | No | Local API bind host used for development scripts and examples | `0.0.0.0` |
+| `API_PORT` | No | Local API port used for development scripts and examples | `8000` |
+
+## Running Locally (Full Stack)
+
+Terminal 1 — API backend:
+
+```bash
+source .venv/bin/activate
+uvicorn app.api.main:app --reload
+```
+
+Terminal 2 — Streamlit UI:
+
+```bash
+source .venv/bin/activate
+streamlit run app/ui/streamlit_app.py
+```
+
+Terminal 3 — tests (optional):
+
+```bash
+source .venv/bin/activate
+pytest
+```
+
+## Running All Tests
+
+Run the full test suite:
+
+```bash
+pytest
+```
+
+Run unit and API tests only, skipping the live end-to-end smoke test file:
+
+```bash
+pytest tests/test_market_data.py tests/test_portfolio_math.py tests/test_monte_carlo.py tests/test_api.py tests/test_hardening.py tests/test_db.py
+```
+
+Expected passing summary:
+
+```bash
+============================= test session starts ==============================
+collected ... items
+
+... passed ...
+
+============================== all tests passed ===============================
+```
+
+## Project Roadmap
+
+Potential next steps for the platform include:
+
+- User authentication with FastAPI Users or Supabase Auth
+- Redis caching for market data and repeated analyses
+- PDF report export for portfolio risk summaries
+- Portfolio comparison view across saved allocations
+- Docker containerization for reproducible local and cloud environments
+- GitHub Actions CI/CD pipeline for tests and deployments
