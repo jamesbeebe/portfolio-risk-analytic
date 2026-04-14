@@ -45,7 +45,7 @@ DEFAULT_CORS_ORIGINS = (
     "http://localhost:8501",
     "http://127.0.0.1:8501",
 )
-EXTRA_CORS_ORIGINS_ENV_VAR = "PORTFOLIO_RISK_EXTRA_CORS_ORIGINS"
+EXTRA_CORS_ORIGINS_ENV_VAR = "EXTRA_CORS_ORIGINS"
 
 
 def get_allowed_cors_origins() -> list[str]:
@@ -59,6 +59,8 @@ def get_allowed_cors_origins() -> list[str]:
         public release because it allows any site to call the API from a browser.
         For this project, local development origins are allowed by default and
         additional deployed frontend origins can be appended through an env var.
+        Example:
+        EXTRA_CORS_ORIGINS=https://my-app.streamlit.app,https://portfolio-risk-api.onrender.com
     """
 
     extra_origins_raw = os.getenv(EXTRA_CORS_ORIGINS_ENV_VAR, "")

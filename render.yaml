@@ -1,0 +1,18 @@
+# Render service blueprint for the FastAPI backend.
+# - `type: web` creates an HTTP service with a public URL.
+# - `buildCommand` installs dependencies and runs Alembic migrations during deploy.
+# - `startCommand` launches the ASGI app and binds to Render's injected `$PORT`.
+# - `sync: false` means sensitive values like `DATABASE_URL` must be set manually
+#   in the Render dashboard rather than committed in source control.
+# - `PYTHON_VERSION` pins the runtime so local and cloud environments stay closer.
+services:
+  - type: web
+    name: portfolio-risk-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt && alembic upgrade head
+    startCommand: uvicorn app.api.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.12.0

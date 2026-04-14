@@ -80,6 +80,9 @@ app = FastAPI(
     version="0.1.0",
 )
 app.state.limiter = limiter
+# Additional deployed frontend origins can be supplied through the
+# EXTRA_CORS_ORIGINS environment variable, for example:
+# EXTRA_CORS_ORIGINS=https://my-app.streamlit.app,https://portfolio-risk-api.onrender.com
 allowed_cors_origins = get_allowed_cors_origins()
 
 # Explicit CORS origins are safer than a wildcard for a public demo because they

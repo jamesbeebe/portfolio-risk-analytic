@@ -2,6 +2,7 @@ yfinance
 pandas
 numpy
 fastapi
+gunicorn
 uvicorn
 pydantic
 python-dotenv
