@@ -819,6 +819,11 @@ st.title("📊 Portfolio Risk Analyzer")
 st.caption(
     "Monte Carlo Value at Risk · Expected Shortfall · Correlation Analysis"
 )
+st.info(
+    "Demo note: The backend is hosted on Render's free tier and may sleep when "
+    "idle. The first request can take around 30 seconds to wake the service; "
+    "after that, responses should be normal."
+)
 st.divider()
 st.caption(
     "To keep the public demo stable, analysis settings are intentionally capped."
