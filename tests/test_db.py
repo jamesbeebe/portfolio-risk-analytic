@@ -11,11 +11,11 @@ isolated, repeatable, and safe to run in any environment without cleanup risk.
 
 from __future__ import annotations
 
+import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
-import pytest
-from fastapi.testclient import TestClient
 
 from app.api.main import app
 from app.db import crud
@@ -161,7 +161,9 @@ def test_save_and_retrieve_portfolio(test_db: Session) -> None:
 def test_get_all_portfolios_returns_newest_first(test_db: Session) -> None:
     # Verifies saved portfolios are returned with the most recently created row first.
     first = crud.save_portfolio(test_db, "First Portfolio", _portfolio_request())
-    second = crud.save_portfolio(test_db, "Second Portfolio", _portfolio_request("Tech"))
+    second = crud.save_portfolio(
+        test_db, "Second Portfolio", _portfolio_request("Tech")
+    )
 
     portfolios = crud.get_all_portfolios(test_db)
 
@@ -270,7 +272,9 @@ def test_delete_portfolio_route(client_with_test_db: TestClient) -> None:
     assert get_response.status_code == 404
 
 
-def test_history_route(client_with_test_db: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_history_route(
+    client_with_test_db: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # Verifies running analyze through the API auto-saves a history row that can be retrieved from /history.
     from app.models.results import RiskResults
 

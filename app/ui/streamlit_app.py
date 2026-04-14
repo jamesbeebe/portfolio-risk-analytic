@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from datetime import date
 import time
+from datetime import date
 
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import streamlit as st
 import requests
+import streamlit as st
 from streamlit.errors import StreamlitSecretNotFoundError
 
 st.set_page_config(
@@ -182,7 +182,10 @@ def fetch_saved_portfolios() -> tuple[list | None, str | None]:
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
     except requests.RequestException:
-        return None, "Unable to load saved portfolios because the Risk API is unreachable."
+        return (
+            None,
+            "Unable to load saved portfolios because the Risk API is unreachable.",
+        )
 
     if response.status_code == 200:
         body = response.json()
@@ -238,7 +241,10 @@ def delete_portfolio_from_api(portfolio_id: int) -> tuple[bool, str | None]:
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
     except requests.RequestException:
-        return False, "Unable to delete the portfolio because the Risk API is unreachable."
+        return (
+            False,
+            "Unable to delete the portfolio because the Risk API is unreachable.",
+        )
 
     if response.status_code == 200:
         return True, None
@@ -260,7 +266,10 @@ def fetch_analysis_history() -> tuple[list | None, str | None]:
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
     except requests.RequestException:
-        return None, "Unable to load analysis history because the Risk API is unreachable."
+        return (
+            None,
+            "Unable to load analysis history because the Risk API is unreachable.",
+        )
 
     if response.status_code == 200:
         body = response.json()
@@ -423,7 +432,9 @@ def validate_and_build_payload(
             f"Number of tickers ({len(tickers)}) does not match number of weights ({len(weights)})"
         )
 
-    duplicate_tickers = sorted({ticker for ticker in tickers if tickers.count(ticker) > 1})
+    duplicate_tickers = sorted(
+        {ticker for ticker in tickers if tickers.count(ticker) > 1}
+    )
     if duplicate_tickers:
         errors.append(f"Duplicate tickers found: {', '.join(duplicate_tickers)}")
 
@@ -529,9 +540,7 @@ def render_summary_metrics(result: dict, payload: dict) -> None:
     tail_columns = st.columns(2)
     tail_columns[0].metric("VaR (99%)", f"{var_99:.1%}")
     tail_columns[1].metric("ES (99%)", f"{es_99:.1%}")
-    st.caption(
-        "99% figures represent more extreme but less frequent tail scenarios."
-    )
+    st.caption("99% figures represent more extreme but less frequent tail scenarios.")
 
     st.subheader("Portfolio Composition")
     weights_df = pd.DataFrame(
@@ -723,7 +732,9 @@ def render_simulation_details(sim_result: dict, confidence_level: float) -> None
         percentile_rows,
         columns=["Percentile", "Return", "Interpretation"],
     )
-    percentile_df["Return"] = percentile_df["Return"].map(lambda value: f"{float(value):+.2%}")
+    percentile_df["Return"] = percentile_df["Return"].map(
+        lambda value: f"{float(value):+.2%}"
+    )
 
     highlighted_percentile = "p5" if confidence_level == 0.95 else "p1"
 
@@ -843,9 +854,7 @@ else:
     st.stop()
 
 st.title("📊 Portfolio Risk Analyzer")
-st.caption(
-    "Monte Carlo Value at Risk · Expected Shortfall · Correlation Analysis"
-)
+st.caption("Monte Carlo Value at Risk · Expected Shortfall · Correlation Analysis")
 st.info(
     "Demo note: The backend is hosted on Render's free tier and may sleep when "
     "idle. The first request can take around 30 seconds to wake the service; "
@@ -858,7 +867,9 @@ st.caption(
 
 st.session_state.setdefault("sidebar_tickers", "")
 st.session_state.setdefault("sidebar_weights", "")
-st.session_state.setdefault("sidebar_start_date", date.fromisoformat(DEFAULT_START_DATE))
+st.session_state.setdefault(
+    "sidebar_start_date", date.fromisoformat(DEFAULT_START_DATE)
+)
 st.session_state.setdefault("sidebar_end_date", date.fromisoformat(DEFAULT_END_DATE))
 st.session_state.setdefault("sidebar_confidence_level", DEFAULT_CONFIDENCE)
 st.session_state.setdefault("sidebar_simulations", DEFAULT_SIMULATIONS)
@@ -913,7 +924,9 @@ with st.sidebar:
                 st.caption(selected_saved_portfolio["notes"])
 
         if delete_saved_clicked and selected_saved_portfolio:
-            deleted, delete_error = delete_portfolio_from_api(selected_saved_portfolio["id"])
+            deleted, delete_error = delete_portfolio_from_api(
+                selected_saved_portfolio["id"]
+            )
             if deleted:
                 st.session_state["selected_saved_portfolio"] = "— select —"
                 st.rerun()
@@ -1097,7 +1110,9 @@ if (
     and st.session_state["analyze_result"] is not None
     and "last_payload" in st.session_state
 ):
-    current_analysis_tab, history_tab = st.tabs(["📊 Current Analysis", "🕐 Analysis History"])
+    current_analysis_tab, history_tab = st.tabs(
+        ["📊 Current Analysis", "🕐 Analysis History"]
+    )
     with current_analysis_tab:
         if st.session_state.get("history_selected_run") is not None:
             st.info(
@@ -1139,9 +1154,13 @@ if (
         st.toast("✅ Analysis complete!", icon="📊")
         st.session_state["show_success_toast"] = False
 else:
-    current_analysis_tab, history_tab = st.tabs(["📊 Current Analysis", "🕐 Analysis History"])
+    current_analysis_tab, history_tab = st.tabs(
+        ["📊 Current Analysis", "🕐 Analysis History"]
+    )
     with current_analysis_tab:
-        st.info("👈 Enter your portfolio in the sidebar and click Run Analysis to get started.")
+        st.info(
+            "👈 Enter your portfolio in the sidebar and click Run Analysis to get started."
+        )
         with st.expander("📖 How this works"):
             st.markdown(
                 "1. Enter ticker symbols and portfolio weights in the sidebar\n"

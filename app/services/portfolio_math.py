@@ -4,6 +4,7 @@ from math import sqrt
 
 import pandas as pd
 
+
 def compute_daily_returns(prices: pd.DataFrame) -> pd.DataFrame:
     """Compute simple daily percentage returns from a price DataFrame.
 
@@ -19,9 +20,7 @@ def compute_daily_returns(prices: pd.DataFrame) -> pd.DataFrame:
     return daily_returns.dropna(how="all")
 
 
-def compute_portfolio_returns(
-    returns: pd.DataFrame, weights: list[float]
-) -> pd.Series:
+def compute_portfolio_returns(returns: pd.DataFrame, weights: list[float]) -> pd.Series:
     """Compute daily portfolio returns from asset returns and portfolio weights.
 
     Args:

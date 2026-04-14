@@ -41,7 +41,7 @@ class AnalyzeRequest(BaseModel):
     random_seed: int = 42
 
     @model_validator(mode="after")
-    def validate_portfolio_inputs(self) -> "AnalyzeRequest":
+    def validate_portfolio_inputs(self) -> AnalyzeRequest:
         """Validate cross-field portfolio constraints for the API request.
 
         Returns:
@@ -61,9 +61,7 @@ class AnalyzeRequest(BaseModel):
             )
 
         if len(self.tickers) != len(self.weights):
-            raise ValueError(
-                "The number of tickers must match the number of weights."
-            )
+            raise ValueError("The number of tickers must match the number of weights.")
 
         duplicate_tickers = sorted(
             {ticker for ticker in self.tickers if self.tickers.count(ticker) > 1}
@@ -74,7 +72,7 @@ class AnalyzeRequest(BaseModel):
                 + ", ".join(duplicate_tickers)
             )
 
-        if not all((weight > 0.0 for weight in self.weights)):
+        if not all(weight > 0.0 for weight in self.weights):
             raise ValueError("All portfolio weights must be positive numbers.")
 
         total_weight = float(sum(self.weights))
@@ -89,8 +87,7 @@ class AnalyzeRequest(BaseModel):
                 str(value) for value in sorted(ALLOWED_SIMULATION_COUNTS)
             )
             raise ValueError(
-                "Monte Carlo simulations must be one of: "
-                f"{allowed_values}."
+                f"Monte Carlo simulations must be one of: {allowed_values}."
             )
 
         if self.horizon_days != PUBLIC_DEMO_HORIZON_DAYS:
@@ -111,9 +108,7 @@ class AnalyzeRequest(BaseModel):
             )
 
         if date_span_days > MAX_DATE_RANGE_DAYS:
-            raise ValueError(
-                "Date range cannot exceed 10 years for this public demo."
-            )
+            raise ValueError("Date range cannot exceed 10 years for this public demo.")
 
         return self
 

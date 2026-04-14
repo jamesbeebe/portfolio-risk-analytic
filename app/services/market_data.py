@@ -11,7 +11,7 @@ from app.config import MARKET_DATA_CACHE_SIZE
 def validate_tickers(tickers: list[str]) -> None:
     """Validate the list of ticker symbols before requesting market data."""
 
-    if any((not ticker.strip() for ticker in tickers)):
+    if any(not ticker.strip() for ticker in tickers):
         raise ValueError("Tickers must not contain empty strings.")
 
     seen: set[str] = set()
@@ -26,7 +26,9 @@ def validate_tickers(tickers: list[str]) -> None:
         raise ValueError(f"Duplicate tickers are not allowed: {duplicate_list}")
 
 
-def _prepare_price_data(raw_data: pd.DataFrame, tickers: tuple[str, ...]) -> pd.DataFrame:
+def _prepare_price_data(
+    raw_data: pd.DataFrame, tickers: tuple[str, ...]
+) -> pd.DataFrame:
     """Clean raw yfinance output into a date-indexed adjusted-close price table.
 
     Args:
@@ -86,8 +88,7 @@ def _prepare_price_data(raw_data: pd.DataFrame, tickers: tuple[str, ...]) -> pd.
     if price_data.empty:
         ticker_list = ", ".join(tickers)
         raise ValueError(
-            "All tickers were dropped after missing-value checks for: "
-            f"{ticker_list}"
+            f"All tickers were dropped after missing-value checks for: {ticker_list}"
         )
 
     price_data = price_data.ffill().bfill()

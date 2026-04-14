@@ -150,7 +150,9 @@ def test_sample_portfolios_returns_list() -> None:
 
 def test_analyze_valid_portfolio(monkeypatch: object) -> None:
     # Verifies a valid analyze request returns the expected risk metrics and preserves the ES >= VaR guarantees.
-    monkeypatch.setattr("app.api.main.run_risk_pipeline", lambda portfolio: _mock_risk_results())
+    monkeypatch.setattr(
+        "app.api.main.run_risk_pipeline", lambda portfolio: _mock_risk_results()
+    )
     response = client.post("/analyze", json=_balanced_portfolio_payload())
     body = response.json()
 
@@ -166,7 +168,9 @@ def test_analyze_valid_portfolio(monkeypatch: object) -> None:
 
 def test_analyze_deterministic_with_seed(monkeypatch: object) -> None:
     # Verifies repeated analyze calls with the same seed produce stable risk output for reproducible API behavior.
-    monkeypatch.setattr("app.api.main.run_risk_pipeline", lambda portfolio: _mock_risk_results())
+    monkeypatch.setattr(
+        "app.api.main.run_risk_pipeline", lambda portfolio: _mock_risk_results()
+    )
     first_response = client.post("/analyze", json=_balanced_portfolio_payload())
     second_response = client.post("/analyze", json=_balanced_portfolio_payload())
 
@@ -261,7 +265,10 @@ def test_analyze_rejects_duplicate_tickers() -> None:
 
 def test_simulate_returns_percentiles(monkeypatch: object) -> None:
     # Verifies the simulate endpoint returns percentile statistics and preserves distribution ordering from lower to upper tails.
-    monkeypatch.setattr("app.api.main.fetch_price_data", lambda **kwargs: _sample_prices()[kwargs["tickers"]])
+    monkeypatch.setattr(
+        "app.api.main.fetch_price_data",
+        lambda **kwargs: _sample_prices()[kwargs["tickers"]],
+    )
     response = client.post("/simulate", json=_tech_portfolio_payload())
     body = response.json()
 
@@ -340,7 +347,9 @@ def test_delete_portfolio_removes_record() -> None:
 
 def test_history_returns_auto_saved_analysis_runs(monkeypatch: object) -> None:
     # Verifies successful analyze requests are persisted to history so clients can retrieve recent analysis runs later.
-    monkeypatch.setattr("app.api.main.run_risk_pipeline", lambda portfolio: _mock_risk_results())
+    monkeypatch.setattr(
+        "app.api.main.run_risk_pipeline", lambda portfolio: _mock_risk_results()
+    )
 
     first_response = client.post("/analyze", json=_balanced_portfolio_payload())
     second_response = client.post("/analyze", json=_balanced_portfolio_payload())

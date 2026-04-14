@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """CRUD helpers for the application's database layer.
 
 CRUD stands for Create, Read, Update, Delete. These functions are the single
@@ -10,6 +8,8 @@ can stay focused on HTTP concerns like request parsing and response formatting.
 This also makes testing easier because database behavior can be exercised
 directly, without having to go through the entire web stack for every case.
 """
+
+from __future__ import annotations
 
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -119,11 +119,7 @@ def get_portfolio_by_id(db: Session, portfolio_id: int) -> SavedPortfolio | None
 
     # Returning None is better than raising here because "not found" is a normal
     # application outcome that the API layer can translate into an HTTP response.
-    return (
-        db.query(SavedPortfolio)
-        .filter(SavedPortfolio.id == portfolio_id)
-        .first()
-    )
+    return db.query(SavedPortfolio).filter(SavedPortfolio.id == portfolio_id).first()
 
 
 def get_analysis_history(db: Session, limit: int = 20) -> list[AnalysisRun]:
@@ -139,12 +135,7 @@ def get_analysis_history(db: Session, limit: int = 20) -> list[AnalysisRun]:
 
     # History queries should always use a LIMIT so the API does not accidentally
     # return thousands of rows and become slow or memory-heavy as the table grows.
-    return (
-        db.query(AnalysisRun)
-        .order_by(desc(AnalysisRun.ran_at))
-        .limit(limit)
-        .all()
-    )
+    return db.query(AnalysisRun).order_by(desc(AnalysisRun.ran_at)).limit(limit).all()
 
 
 def get_runs_for_portfolio(db: Session, portfolio_id: int) -> list[AnalysisRun]:

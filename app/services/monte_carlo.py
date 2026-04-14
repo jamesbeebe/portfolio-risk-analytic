@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 Plain-English notes:
 
@@ -11,6 +9,8 @@ Plain-English notes:
 - The output array represents one simulated portfolio return per simulation. Each
   value is the modeled portfolio return over the requested holding horizon.
 """
+
+from __future__ import annotations
 
 import numpy as np
 import pandas as pd

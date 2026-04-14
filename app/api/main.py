@@ -2,29 +2,30 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
-from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, Query, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
 import numpy as np
+import uvicorn
+from fastapi import Depends, FastAPI, Query, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-import uvicorn
+from sqlalchemy.orm import Session
 
 from app.config import (
     ANALYZE_RATE_LIMIT,
     HEALTH_RATE_LIMIT,
-    get_allowed_cors_origins,
     RATE_LIMIT_RETRY_AFTER_SECONDS,
     ROOT_RATE_LIMIT,
     SAMPLE_PORTFOLIOS_RATE_LIMIT,
     SIMULATE_RATE_LIMIT,
+    get_allowed_cors_origins,
 )
 from app.db import crud
 from app.db.database import get_db
@@ -48,7 +49,6 @@ from app.services.market_data import fetch_price_data
 from app.services.monte_carlo import run_monte_carlo_simulation
 from app.services.pipeline import run_risk_pipeline
 from app.services.portfolio_math import compute_daily_returns
-from sqlalchemy.orm import Session
 
 logging.basicConfig(
     level=logging.INFO,
@@ -166,7 +166,7 @@ async def log_requests(request: Request, call_next) -> JSONResponse:
         The response produced by downstream handlers.
     """
 
-    request_timestamp = datetime.now(timezone.utc).isoformat()
+    request_timestamp = datetime.now(UTC).isoformat()
     start_time = perf_counter()
     client_ip = request.client.host if request.client else "unknown"
     is_expensive_endpoint = request.url.path in {"/analyze", "/simulate"}
@@ -261,9 +261,7 @@ async def handle_request_validation_error(
 
 
 @app.exception_handler(Exception)
-async def handle_unexpected_exception(
-    request: Request, exc: Exception
-) -> JSONResponse:
+async def handle_unexpected_exception(request: Request, exc: Exception) -> JSONResponse:
     """Log and normalize unexpected server exceptions into a 500 response.
 
     Args:

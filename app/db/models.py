@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -42,14 +42,14 @@ class SavedPortfolio(Base):
     simulations: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # A SQLAlchemy relationship links Python objects across tables without
     # manually writing a join every time. Here it lets us access all analysis
     # runs that belong to one saved portfolio as `saved_portfolio.analysis_runs`.
-    analysis_runs: Mapped[list["AnalysisRun"]] = relationship(
+    analysis_runs: Mapped[list[AnalysisRun]] = relationship(
         back_populates="portfolio",
     )
 
@@ -100,7 +100,7 @@ class AnalysisRun(Base):
     simulation_count: Mapped[int] = mapped_column(Integer, nullable=False)
     ran_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
@@ -112,4 +112,6 @@ class AnalysisRun(Base):
         """Return a readable debug representation of the analysis run."""
 
         ran_at_value = self.ran_at.date().isoformat() if self.ran_at else "unknown"
-        return f"<AnalysisRun id={self.id} var_95={self.var_95:.3f} ran_at={ran_at_value}>"
+        return (
+            f"<AnalysisRun id={self.id} var_95={self.var_95:.3f} ran_at={ran_at_value}>"
+        )

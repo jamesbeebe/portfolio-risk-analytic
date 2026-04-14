@@ -1,6 +1,4 @@
-from typing import List
-
-from pydantic import BaseModel, model_validator, ValidationError
+from pydantic import BaseModel, model_validator
 
 from app.config import DEFAULTS
 
@@ -26,8 +24,8 @@ class PortfolioInput(BaseModel):
         - horizon_days between 1 and 30
     """
 
-    tickers: List[str]
-    weights: List[float]
+    tickers: list[str]
+    weights: list[float]
     start_date: str = DEFAULTS.DEFAULT_START_DATE
     end_date: str = DEFAULTS.DEFAULT_END_DATE
     confidence_level: float = DEFAULTS.DEFAULT_CONFIDENCE_LEVEL
@@ -52,7 +50,7 @@ class PortfolioInput(BaseModel):
             )
 
         # Check positivity of weights
-        if not all((w > 0.0 for w in self.weights)):
+        if not all(w > 0.0 for w in self.weights):
             raise ValueError("All weights must be positive numbers greater than zero.")
 
         # Check sum-to-one within tolerance

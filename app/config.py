@@ -3,6 +3,7 @@
 This module provides a frozen dataclass `Config` and a module-level `DEFAULTS`
 instance holding default values used across the application.
 """
+
 import os
 from dataclasses import dataclass
 
@@ -65,9 +66,7 @@ def get_allowed_cors_origins() -> list[str]:
 
     extra_origins_raw = os.getenv(EXTRA_CORS_ORIGINS_ENV_VAR, "")
     extra_origins = [
-        origin.strip()
-        for origin in extra_origins_raw.split(",")
-        if origin.strip()
+        origin.strip() for origin in extra_origins_raw.split(",") if origin.strip()
     ]
 
     allowed_origins: list[str] = []

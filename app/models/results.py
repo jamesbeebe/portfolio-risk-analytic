@@ -1,5 +1,3 @@
-from typing import Dict, List
-
 from pydantic import BaseModel
 
 
@@ -20,15 +18,15 @@ class RiskResults(BaseModel):
         horizon_days: int - holding horizon in days
     """
 
-    tickers: List[str]
-    weights: List[float]
+    tickers: list[str]
+    weights: list[float]
     mean_daily_return: float
     annualized_volatility: float
     var_95: float
     es_95: float
     var_99: float
     es_99: float
-    correlation_matrix: Dict[str, Dict[str, float]]
+    correlation_matrix: dict[str, dict[str, float]]
     simulation_count: int
     horizon_days: int
 

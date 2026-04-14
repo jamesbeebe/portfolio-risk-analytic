@@ -1,7 +1,11 @@
 import pandas as pd
 import pytest
 
-from app.services.market_data import clear_market_data_cache, fetch_price_data, validate_tickers
+from app.services.market_data import (
+    clear_market_data_cache,
+    fetch_price_data,
+    validate_tickers,
+)
 
 
 def test_validate_tickers_empty_string() -> None:

@@ -2,6 +2,7 @@ from pydantic import ValidationError
 
 from app.models.portfolio import PortfolioInput
 
+
 def main() -> None:
     # 1) Create a valid PortfolioInput and print it
     try:
@@ -28,6 +29,7 @@ def main() -> None:
     except ValidationError as e:
         print("\nExpected failure for invalid weights:")
         print(e)
+
 
 if __name__ == "__main__":
     main()
