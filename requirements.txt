@@ -4,6 +4,7 @@ numpy
 fastapi
 gunicorn
 uvicorn
+plotly
 pydantic
 python-dotenv
 streamlit
