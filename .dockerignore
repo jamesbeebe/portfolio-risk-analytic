@@ -1,0 +1,28 @@
+# Ignore Python bytecode caches because they are generated automatically.
+__pycache__/
+# Ignore compiled Python files because Docker does not need local artifacts.
+*.pyc
+# Ignore optimized Python bytecode files for the same reason.
+*.pyo
+# Never bake secrets into an image.
+.env
+# Ignore the local virtual environment because the container installs its own dependencies.
+.venv/
+# Ignore alternate virtual environment directories for the same reason.
+venv/
+# Do not copy local SQLite database files into the image.
+*.db
+# Ignore Git history because it adds size without helping runtime behavior.
+.git/
+# CI workflow files are not needed inside the runtime image.
+.github/
+# Tests are useful in CI but do not need to ship in the backend runtime image.
+tests/
+# Local/project documentation is not needed by the running API container.
+docs/
+# Markdown files are documentation, not runtime assets.
+*.md
+# Streamlit frontend config is not needed in the API-only container.
+.streamlit/
+# Ignore node modules if they ever appear in the repo.
+node_modules/

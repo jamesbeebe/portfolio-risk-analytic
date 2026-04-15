@@ -3,7 +3,7 @@
 # development and CI use the same rules instead of duplicating config.
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 88
 exclude = [
   "alembic/versions/",

@@ -1,0 +1,21 @@
+# Compose file format version.
+version: "3.9"
+
+# Services are the containers that make up this local stack.
+services:
+  # The API service runs the FastAPI backend container.
+  api:
+    # Build the image from the Dockerfile in the current directory.
+    build: .
+    # Map host port 8000 to container port 8000 so localhost requests work.
+    ports:
+      - "8000:8000"
+    # Provide runtime environment variables to the container.
+    environment:
+      - DATABASE_URL=sqlite:///./portfolio_risk.db
+    # Mount the local SQLite database file into the container so data persists
+    # between container restarts during local development.
+    volumes:
+      - ./portfolio_risk.db:/app/portfolio_risk.db
+    # Restart automatically unless the container is explicitly stopped by the user.
+    restart: unless-stopped
