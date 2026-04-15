@@ -8,7 +8,7 @@ Monte Carlo portfolio risk analysis with a Streamlit frontend, FastAPI backend, 
 
 ## Project Overview
 
-This project is a Python-based portfolio risk analytics platform that combines historical market data, portfolio math, and Monte Carlo simulation to estimate volatility, Value at Risk (VaR), and Expected Shortfall (ES). Phase 2 adds a FastAPI backend so these analytics can be accessed through a documented HTTP API and consumed by future frontend or client applications.
+This project is a Python-based portfolio risk analytics platform that combines historical market data, portfolio math, and Monte Carlo simulation to estimate volatility, Value at Risk (VaR), and Expected Shortfall (ES).
 
 ## Setup & Installation
 
